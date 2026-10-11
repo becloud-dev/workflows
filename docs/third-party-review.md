@@ -1479,3 +1479,47 @@ Gaps carried forward (recorded, not closed):
 | Pagination past 100 issues and the cap, live | the cap and `--paginate --slurp` ran only on a fixture | a sandbox with more than 100 open issues, or a fixture-only acceptance |
 | Validate abort on a bad model `order`, on the runner | the `jq` was tested locally only | a forced bad order in a sandbox run |
 | `sub_issues` use by the model; order quality on real issues | verdicts were read on issues written for the test | run on a real project later, as decided |
+
+### Stage 2b design inputs, read 2026-10-11
+
+Sources: docs.github.com REST pages for repository tags, milestones and update an issue; raw
+`github/docs` `workflow-syntax.md` (`on.workflow_call.inputs`, `on.workflow_dispatch.inputs`,
+`jobs.<job_id>.with`); live read-only `gh api` on `becloud-dev/triage-sandbox`.
+
+| Topic | Finding |
+|---|---|
+| Repository tags | `GET /repos/{o}/{r}/tags`: `per_page` max 100, default 30; sort order not stated |
+| Milestones | create and update take `title`, `state` (`open`, `closed`), `description`, `due_on` (`YYYY-MM-DDTHH:MM:SSZ`); list takes `state` (`open`, `closed`, `all`), `per_page` max 100; the response carries `number` and `open_issues` |
+| Issue milestone | `PATCH issues/{n}` `milestone` is an integer number, `null` clears it; the change needs push access and is silently dropped without it |
+| Workflow inputs | `boolean`, `number`, `string` for `workflow_call` and `workflow_dispatch`; booleans stay Booleans in the `inputs` context; inputs passed with `jobs.<id>.with` must match the called workflow's input specifications |
+| Sandbox, live | 14 open issues, 0 milestones, 0 tags; types: Bug 7 (#1, #2, #4, #5, #6, #7, #10), Feature 5 (#8, #9, #12, #13, #14), Task 1 (#11), none 1 (#3) |
+
+Implications (inference):
+
+- Tag order is unspecified, so the version scan paginates and sorts by version in jq.
+- Open Bug share on the sandbox is 7/12 = 0.58, so the default `bug_budget` of 0.30 fires the
+  hold on the first run; a no-hold test needs `bug_budget` of 0.7 or more.
+- With 0 milestones and 0 tags only the `v0.1.0` fallback of the title rule runs live; the
+  next-minor branch is fixture-only.
+- The caller sets `release_days`, `max_issues`, `bug_budget` and `max_releases` as literals in
+  `with:`; only `apply` comes from the dispatch input, so `vars` strings are not coerced.
+
+Unverified: a dispatch boolean passed through `with:` to a called boolean input (the docs text
+implies it; live probe planned); the local jq is 1.8.1, the runner's is 1.7.1.
+
+### Decision: stage 2b design (user, 2026-10-11)
+
+1. Input scope as stage 2a: open, no PR, no milestone, no `needs-info`, Priority set; cap 100 by
+   tier; unprioritised issues are listed and never assigned.
+2. Error budget: open `Bug` / (open `Bug` + open `Feature`), repo-wide, `Task` excluded,
+   computed in shell. Above `bug_budget` only Bugs are planned and Features go to `held`; the
+   shell enforces it in validate, the model does not judge saturation.
+3. ETA: shell sets `due_on` to today 00:00:00Z plus k times `release_days` for the k-th new
+   milestone; the model groups and gives a theme, it estimates no time.
+4. Write gate: dispatch input `apply`, default false (report only); true creates milestones and
+   assigns issues.
+5. Title: next minor above the highest `vX.Y.Z` found by the shell, `v0.1.0` if none; the theme
+   goes in the milestone description.
+6. The model may assign issues into existing open milestones while `open_issues` is below
+   `max_issues`; it never edits them.
+7. Defaults: `release_days` 14, `max_issues` 8, `bug_budget` 0.30, `max_releases` 3.
