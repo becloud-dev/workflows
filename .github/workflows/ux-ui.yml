@@ -1,0 +1,242 @@
+name: ux-ui
+
+on:
+  workflow_call:
+    inputs:
+      model:
+        type: string
+        required: true
+      owners:
+        description: Comma-separated logins, no spaces
+        type: string
+        required: true
+      design_system_path:
+        description: Path of the design system file in the caller repository; empty for none
+        type: string
+        required: false
+        default: ""
+    secrets:
+      claude_code_oauth_token:
+        required: true
+
+permissions: {}
+
+jobs:
+  ux-ui:
+    name: UX and UI research
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: contains(format(',{0},', inputs.owners), format(',{0},', github.event.sender.login))
+    permissions:
+      contents: read
+      issues: write # comment, add the needs-info label
+    steps:
+      - name: Check out the caller repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check out the shared prompts
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .ai-workflows
+          sparse-checkout: prompts
+          persist-credentials: false
+
+      - name: Read the issue type and the design system
+        id: kind
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ github.event.issue.number }}
+          DS_PATH: ${{ inputs.design_system_path }}
+        run: |
+          set -euo pipefail
+          kind=$(gh api "repos/$GITHUB_REPOSITORY/issues/$ISSUE" --jq '.type.name // ""')
+          echo "type=$kind" >> "$GITHUB_OUTPUT"
+          ds=none
+          if [ -n "$DS_PATH" ]; then
+            case "$DS_PATH" in /* | *..*) echo "design_system_path must be relative, without .." >&2; exit 1 ;; esac
+            test -f "$DS_PATH" || { echo "design_system_path not found: $DS_PATH" >&2; exit 1; }
+            ds=$DS_PATH
+          fi
+          echo "design_system=$ds" >> "$GITHUB_OUTPUT"
+
+      - name: Skip a Project
+        if: steps.kind.outputs.type == 'Project'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ github.event.issue.number }}
+        run: |
+          gh issue comment "$ISSUE" --body "UX and UI research applies to the sub-issues of a Project, not to the Project itself. No research was run."
+
+      - name: UX research
+        id: ux
+        if: steps.kind.outputs.type != 'Project'
+        uses: anthropics/claude-code-action@1d6de8cb0c237e7c15e9e1bdf973826ebae490cc # v1.0.248
+        with:
+          claude_code_oauth_token: ${{ secrets.claude_code_oauth_token }}
+          github_token: ${{ github.token }}
+          prompt: |
+            Repository: ${{ github.repository }}
+            Issue number: ${{ github.event.issue.number }}
+            Read .ai-workflows/prompts/ux-research.md and follow it.
+          claude_args: |
+            --model ${{ inputs.model }}
+            --allowedTools "Bash(gh issue view:*),Read,Grep,Glob"
+            --json-schema '{"type":"object","properties":{"outcome":{"type":"string","enum":["researched","needs_info"]},"rationale":{"type":"string"},"questions":{"type":"array","items":{"type":"string"},"maxItems":5},"user_story":{"type":"string"},"requirements":{"type":"array","items":{"type":"string"},"maxItems":8},"hierarchy":{"type":"array","maxItems":8,"items":{"type":"object","properties":{"element":{"type":"string"},"why":{"type":"string"}},"required":["element","why"]}},"screen_elements":{"type":"array","maxItems":10,"items":{"type":"object","properties":{"name":{"type":"string"},"purpose":{"type":"string"}},"required":["name","purpose"]}}},"required":["outcome","rationale"]}'
+
+      - name: Post the UX research
+        id: ux_post
+        if: steps.ux.outputs.structured_output != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERDICT: ${{ steps.ux.outputs.structured_output }}
+          ISSUE: ${{ github.event.issue.number }}
+        run: |
+          set -euo pipefail
+          f="$RUNNER_TEMP/ux.json"
+          printf '%s\n' "$VERDICT" > "$f"
+          outcome=$(jq -er .outcome "$f")
+          if [ "$outcome" = needs_info ]; then
+            jq -e '.questions | type == "array" and length >= 1 and length <= 5' "$f" > /dev/null
+            {
+              echo '<!-- ux-research -->'
+              echo 'More information is needed before UX research:'
+              echo
+              jq -r '.questions | to_entries[] | "\(.key + 1). \(.value)"' "$f"
+              echo
+              echo "Reason: $(jq -r .rationale "$f")"
+            } > "$RUNNER_TEMP/ux.md"
+            gh issue edit "$ISSUE" --add-label needs-info
+            gh issue comment "$ISSUE" --body-file "$RUNNER_TEMP/ux.md"
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          jq -e '(.user_story | type == "string" and length > 0)
+                 and (.requirements | type == "array" and length >= 2 and length <= 8)
+                 and (.hierarchy | type == "array" and length >= 2 and length <= 8)
+                 and (.screen_elements | type == "array" and length >= 1 and length <= 10)' "$f" > /dev/null
+          {
+            echo '<!-- ux-research -->'
+            echo '## UX research'
+            echo
+            echo "**User story.** $(jq -r .user_story "$f")"
+            echo
+            echo '**Requirements**'
+            jq -r '.requirements | to_entries[] | "\(.key + 1). \(.value)"' "$f"
+            echo
+            echo '**Information hierarchy** (most important first)'
+            jq -r '.hierarchy | to_entries[] | "\(.key + 1). \(.value.element): \(.value.why)"' "$f"
+            echo
+            echo '**Screen elements**'
+            jq -r '.screen_elements[] | "- \(.name): \(.purpose)"' "$f"
+            echo
+            jq -r .rationale "$f"
+          } > "$RUNNER_TEMP/ux.md"
+          gh issue comment "$ISSUE" --body-file "$RUNNER_TEMP/ux.md"
+          n=$(gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/issues/$ISSUE/comments" \
+                | jq 'add | map(select(.body | startswith("<!-- ux-research -->"))) | length')
+          echo "- UX comment posted; marker comments read back: $n" >> "$GITHUB_STEP_SUMMARY"
+          test "$n" -ge 1
+          mkdir -p .ux
+          cp "$f" .ux/ux.json
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+
+      - name: Keep the UX run record
+        if: always() && steps.kind.outputs.type != 'Project'
+        id: record_ux
+        uses: $/.github/actions/record-run
+        with:
+          execution_file: ${{ steps.ux.outputs.execution_file }}
+          stage: ux-research
+          model: ${{ inputs.model }}
+          auth: oauth
+          issue: ${{ github.event.issue.number }}
+
+      - name: Set the UX record aside
+        if: always() && steps.kind.outputs.type != 'Project'
+        run: cp "${{ steps.record_ux.outputs.record_path }}" "$RUNNER_TEMP/run-record-ux.json"
+
+      - name: UI research
+        id: ui
+        if: steps.ux_post.outputs.ready == 'true'
+        uses: anthropics/claude-code-action@1d6de8cb0c237e7c15e9e1bdf973826ebae490cc # v1.0.248
+        with:
+          claude_code_oauth_token: ${{ secrets.claude_code_oauth_token }}
+          github_token: ${{ github.token }}
+          prompt: |
+            Repository: ${{ github.repository }}
+            Issue number: ${{ github.event.issue.number }}
+            Design system: ${{ steps.kind.outputs.design_system }}
+            Read .ai-workflows/prompts/ui-research.md and follow it.
+          claude_args: |
+            --model ${{ inputs.model }}
+            --allowedTools "Bash(gh issue view:*),Read,Grep,Glob"
+            --json-schema '{"type":"object","properties":{"design_system_used":{"type":"boolean"},"design_system_note":{"type":"string"},"layout":{"type":"string"},"navigation":{"type":"string"},"components":{"type":"array","items":{"type":"object","properties":{"name":{"type":"string"},"source":{"type":"string"},"note":{"type":"string"}},"required":["name","source","note"]}},"tokens":{"type":"array","items":{"type":"object","properties":{"role":{"type":"string"},"value":{"type":"string"},"source":{"type":"string"}},"required":["role","value","source"]}},"gaps":{"type":"array","items":{"type":"string"}},"rationale":{"type":"string"}},"required":["design_system_used","design_system_note","layout","navigation","components","tokens","gaps","rationale"]}'
+
+      - name: Post the UI research
+        if: steps.ui.outputs.structured_output != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERDICT: ${{ steps.ui.outputs.structured_output }}
+          ISSUE: ${{ github.event.issue.number }}
+        run: |
+          set -euo pipefail
+          f="$RUNNER_TEMP/ui.json"
+          printf '%s\n' "$VERDICT" > "$f"
+          jq -e '(.layout | type == "string" and length > 0)
+                 and (.components | type == "array" and length >= 1)
+                 and (.design_system_used or (.tokens | length == 0))' "$f" > /dev/null
+          {
+            echo '<!-- ui-research -->'
+            echo '## UI research'
+            echo
+            echo "**Design system.** $(jq -r .design_system_note "$f")"
+            echo
+            echo '**Layout**'
+            echo '```text'
+            jq -r '.layout | gsub("```"; "'"'''"'")' "$f"
+            echo '```'
+            echo
+            echo "**Navigation.** $(jq -r .navigation "$f")"
+            echo
+            echo '**Components**'
+            jq -r '.components[] | "- \(.name) (\(.source)): \(.note)"' "$f"
+            if [ "$(jq '.tokens | length' "$f")" -gt 0 ]; then
+              echo
+              echo '**Tokens**'
+              jq -r '.tokens[] | "- \(.role): \(.value) (\(.source))"' "$f"
+            fi
+            if [ "$(jq '.gaps | length' "$f")" -gt 0 ]; then
+              echo
+              echo '**Gaps**'
+              jq -r '.gaps[] | "- \(.)"' "$f"
+            fi
+            echo
+            jq -r .rationale "$f"
+          } > "$RUNNER_TEMP/ui.md"
+          gh issue comment "$ISSUE" --body-file "$RUNNER_TEMP/ui.md"
+
+      - name: Record the UI run
+        if: always() && steps.ux_post.outputs.ready == 'true'
+        id: record_ui
+        uses: $/.github/actions/record-run
+        with:
+          execution_file: ${{ steps.ui.outputs.execution_file }}
+          stage: ui-research
+          model: ${{ inputs.model }}
+          auth: oauth
+          issue: ${{ github.event.issue.number }}
+
+      - name: Upload the records
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: run-record-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/run-record-ux.json
+            ${{ steps.record_ui.outputs.record_path }}
+          if-no-files-found: warn
+          retention-days: 90
