@@ -1663,6 +1663,31 @@ Open (stage 2b): the no-hold side of the error budget; the validate abort on a l
 integer `target` into an open milestone with capacity (milestones 6 and 7 have room now); the
 report header reads "applied" after a failed apply (seen in run `38179936884`).
 
+### Live results: roadmap planner no-hold run and the due date collision (2026-10-11)
+
+Run `38181470415` on `becloud-dev/triage-sandbox`, `apply=true`, workflows `main` `3635222`,
+sandbox caller `85d313e` (`bug_budget` 0.70 as a test value). Result: success.
+
+| Check | Result |
+|---|---|
+| Budget | `bug_share` 0.583 against 0.70, `hold_features` false; `held` empty, validate accepted |
+| Plan | #8 and #12 each in a new milestone (`v0.3.0`, `v0.4.0`), although milestones 6 and 7 had capacity 4 and 6; unplanned none |
+| Quoted evidence | 6 of 6 found in the issue text |
+| End state | only the `milestone` field changed, on #8 and #12 |
+| Run record | cost $0.0407, `permission_denials_count` 0 |
+| Due dates | `v0.3.0` stored `2026-10-25` and `v0.4.0` `2026-11-08`, the same days as the existing `v0.1.0` and `v0.2.0` |
+
+Finding: ~~ETA by `release_days`: due date is today plus k times `release_days` for the k-th new
+milestone~~ ignored the due dates of existing open milestones, so a later release could be dated
+no later than an earlier one. Amended rule, commit `1325e84`: the later of today and the latest
+open `due_on`, plus k times `release_days` (sent at noon UTC, see the probe). Fixture check on
+jq 1.7.1: future, past, null and empty due dates. Not yet run live.
+
+Unverified: the report header on the runner (the job summary is not in the artifact).
+
+Not exercised live: an integer `target` into an open milestone with capacity; the model opened
+new milestones although existing ones had room. Covered by fixtures only.
+
 ### Queued after stage 2b
 
 Issue type `Project` (org level; triage splits it into sub-issues), the issue form
