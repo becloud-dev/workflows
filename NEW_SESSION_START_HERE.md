@@ -2,18 +2,18 @@
 
 ## Status
 2026-10-11: drafting the shared AI-oriented workflow flow for the becloud-dev GitHub org.
-Documentation-only; no workflow YAML exists yet. 4 local commits, no remote.
+Documentation-only; no workflow YAML exists yet. Local commits only, no remote.
 
 ## Resume here
 Read the review table in `docs/third-party-review.md` (section 3, review order item 3), then read
-the GitHub App permission-key pages and the AI-execution group: #18 claude-code-action, #19 model
-IDs, #15 Actions billing. First command: `git log --oneline` (verified via it: HEAD is 43711e8
-before this file was committed).
+the AI-execution group: #18 claude-code-action, #19 model IDs, #15 Actions billing. Report at
+each checkpoint and wait. First command: `git log --oneline`.
 
 ## Git state (2026-10-11T11:07-03:00)
 - Branch `main`, clean tree (verified via `git status -sb`).
 - No remote, no upstream (verified via `git log @{u}..HEAD`: "no upstream configured").
-- 4 commits before this file: eef7c93, 8ea870b, b3bd6ae, 43711e8 (verified via `git log --oneline`).
+- 6 commits, newest first: d26cdc0 (permission keys), e40d633 (this file), 43711e8, b3bd6ae,
+  8ea870b, eef7c93 (verified via `git log --oneline`).
 - No open PRs: no remote exists.
 
 ## Done and verified
@@ -23,6 +23,8 @@ before this file was committed).
 - 24 candidate doc URLs returned HTTP 200 (verified via curl; existence only).
 - Hard-blocker docs #4, #5, #8, #11-#14 and data-model docs #6, #7, #9, #10 read via WebFetch;
   findings in section 5 of the doc.
+- GitHub App permission keys (#5, #8) read raw; findings in section 5 of the doc
+  (`organization_projects` for Projects v2; table of keys and action inputs).
 - Org `becloud-dev`: Free plan, issue types Task/Bug/Feature, 0 repos (verified via `gh api`).
 
 ## Decisions
@@ -44,8 +46,9 @@ before this file was committed).
   keep, release mechanism, token approach (App recommended).
 - Diagram ambiguities: DEV (haiku) executing the plan; whether the AI merges.
 - Not verified: the Access setting being selectable on a Free org (needs the repo to exist);
-  GitHub App permission key names for projects; rulesets plan wording came via search, not the
-  raw doc page.
+  rulesets plan wording came via search, not the raw doc page; the org "Issue Types" and
+  "Variables" App permissions are listed in the docs but have no key in the token schema or
+  action input (design does not depend on them; minting was not tested).
 - Not yet read: #1-#3, #15-#21 (except the pieces noted above).
 
 ## Pointers
