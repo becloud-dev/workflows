@@ -677,3 +677,26 @@ Unverified (needs a live run): whether an OAuth run fills `total_cost_usd` and `
 with values; whether the billing usage endpoints return rows for a public repo on the Free
 plan; Projects v2 writes with an App token from a workflow step; whether `display_report`
 output fits the 1 MiB step limit on long runs.
+
+#### Decisions: monitoring record (user, 2026-10-11)
+
+- Fields per record: `ts`, `repo`, `workflow`, `stage`, `issue_or_pr`, `run_id`, `run_attempt`,
+  `model` (pinned ID passed by the caller), `auth` (`oauth`, `api_key`, `bedrock`), `is_error`,
+  `num_turns`, `duration_ms`, `duration_api_ms`, `total_cost_usd`, and per model `inputTokens`,
+  `outputTokens`, `thinkingTokens`, `cacheReadInputTokens`, `cacheCreationInputTokens`,
+  `costUSD`, `costBasis`. No prompt, result text or tool output.
+- Storage: job summary always, plus a JSON artifact with `retention-days: 90`. No issue comment
+  and no metrics branch for now; revisit once real data shows what is worth keeping.
+- Producer: one composite action in the shared repo, called after the Claude step by each
+  stage workflow, so the `jq` logic exists once.
+- Failed and cancelled runs record too (`if: always()`); a run killed before any result message
+  records zeros and the job conclusion only.
+- Cross-run totals: a documented `gh run download` and `jq` command, run by hand; no
+  aggregation workflow until data exists. (Round 2, default accepted if no change.)
+
+Composite action reference (read raw, `workflow-syntax.md`): `./path` resolves against the
+caller's workspace, so it fails from a reusable workflow called cross-repo. `$/path/to/action`
+resolves to the repository of the file it appears in, at the running commit, with no checkout
+and no `@ref`; not on GHES. Fallback: `becloud-dev/workflows/.github/actions/<name>@<ref>`.
+Unverified: `$/` from a reusable workflow called cross-repo on a hosted runner; the release
+date and minimum runner version (2.336.0) came from a search result, not read raw.
