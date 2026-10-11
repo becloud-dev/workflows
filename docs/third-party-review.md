@@ -161,6 +161,12 @@ enforcement is needed. Price seen on the org upgrade screen: Team is $4 per user
 $48 per seat per year (same total either way). The billing-cycle docs did not state
 cancellation or refund terms; that is unverified.
 
+Superseded 2026-10-11 for public repositories: all repositories are now public (see "Decisions:
+visibility and license"). On public repositories under Free, GitHub enforces CODEOWNERS with a
+protected branch or ruleset, and environment reviewers (see "Public repositories: plan features
+and subscription terms"). The premise above held for private repositories only. Gates move to
+native enforcement where one exists; workflow logic stays for what GitHub cannot gate (labels).
+
 ### Shared workflows repo, all private (checked 2026-10-11)
 
 - A private repository can share its actions and reusable workflows with other private repos of
@@ -174,12 +180,37 @@ cancellation or refund terms; that is unverified.
 - Not yet verified on a Free org: that the setting is actually selectable there (settings are
   visible only once the repo exists).
 
+Amended 2026-10-11: with public repositories, a called workflow in a public repo is accessible
+to any caller (a `private` caller reaches `private` and `public`; a `public` caller reaches
+`public` only), so the Access setting above is not needed. The organization policy for allowed
+actions and reusable workflows still applies. Source: `reusing-workflow-configurations.md`.
+
 ### Gate decisions (2026-10-11)
 
 - A failed gate sets a failing check and a blocking comment; the code owner merges by hand. No
   automatic reverts or closes.
 - Gating labels (`RELEASE`, `READY TO LIVE`): a workflow removes the label and comments when the
   actor is not in an owners list kept as a repo variable.
+
+Amended 2026-10-11 (public repositories):
+
+- Merge to the default branch: a protected branch or ruleset that requires a pull request and
+  review from code owners, with CODEOWNERS naming the code owner.
+- "Pull request authors cannot approve their own pull requests", and "Repository owners and
+  administrators can merge a pull request even if it hasn't received an approving review".
+  Inference: a PR opened by an App bot can be approved by the owner; a PR the owner opens cannot
+  be self-approved, and the owner's override is the escape hatch.
+- Labels (`RELEASE`, `READY TO LIVE`): the workflow check above stays; no native control over
+  who applies a label was found in the files read.
+- Deploy jobs: an environment with the code owner as required reviewer. A job that calls a
+  reusable workflow cannot use `environment` (#1), so it sits on a job inside the called
+  workflow.
+- AI runs start only from the code owner (decision, "Decisions: visibility and license").
+- A failed gate still sets a failing check and a blocking comment; no automatic reverts or
+  closes.
+
+Unverified: which rule types a ruleset offers on a Free public repo; how admin bypass behaves in
+a ruleset against classic branch protection; the label permission model.
 
 ### Token and data model (#4, #6, #7, #8, #9, #10), read 2026-10-11
 
