@@ -393,3 +393,39 @@ Unverified: whether PR templates and `config.yml` behave like issue forms (same 
 not tested); whether `actions-nga` starter workflows from a private `.github` work on a Free
 org (`fpt` is the docs convention for Free, Pro and Team, not stated in the files read); what
 happens when a template names a label that does not exist in the repo (#17).
+
+### Decisions: visibility and license (2026-10-11)
+
+- All repositories under `becloud-dev` are public (user, 2026-10-11), reversing the all-private
+  decision recorded earlier the same day. Purpose: a study project open to the developer
+  community, to show that AI can automate the process and to measure the real cost; the cheapest
+  setup is the goal (Free plan, public repositories).
+- License: MIT for code and docs, one `LICENSE` per repository. Copyright holder: Bento Machado
+  (https://github.com/bentoluizv), year 2026 (user, 2026-10-11; the full legal name is longer,
+  and the short form with the personal page was chosen).
+- Accepted consequence: others may use, sell and host the work commercially.
+- Contributions arrive under the repository license (GitHub Terms of Service, "Contributions
+  Under Repository License", "inbound=outbound"); no CLA.
+- Not decided: who may start an AI run; subscription auth on a public project; replacement of
+  option C by native gates; a monitoring and metrics stage.
+
+### AI-generated output and copyright (read 2026-10-11)
+
+Source: US Copyright Office, "Copyright and Artificial Intelligence, Part 2: Copyrightability"
+(January 2025), raw PDF, executive summary conclusions.
+
+- "Copyright does not extend to purely AI-generated material, or material where there is
+  insufficient human control over the expressive elements."
+- "The use of AI tools to assist rather than stand in for human creativity does not affect the
+  availability of copyright protection for the output."
+- "Based on the functioning of current generally available technology, prompts do not alone
+  provide sufficient control."
+- Human authors keep copyright in perceptible contributions and in "creative selection,
+  coordination, or arrangement … or creative modifications of the outputs". Case by case.
+
+Implications (inference): files written by AI with little human edit may carry no copyright, so
+the MIT notice covers the human-authored parts and may not cover raw AI output. The effect on a
+permissive license is small; it weakens any claim over pure AI output.
+
+Unverified: US guidance only, not binding on courts; Brazilian law not read; whether human
+review in the workflow counts as a creative modification.
