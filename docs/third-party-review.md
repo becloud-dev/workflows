@@ -429,3 +429,45 @@ permissive license is small; it weakens any claim over pure AI output.
 
 Unverified: US guidance only, not binding on courts; Brazilian law not read; whether human
 review in the workflow counts as a creative modification.
+
+### Public repositories: plan features and subscription terms (read 2026-10-11)
+
+Sources: raw `github/docs` markdown (`billing/concepts/product-billing/github-actions.md`,
+`deployments-and-environments.md`, `about-rulesets.md`, `about-protected-branches.md`, reusables
+`gated-features/repo-rules`, `protected-branches`, `code-owners`) and raw markdown of
+`code.claude.com/docs/en/legal-and-compliance` and `github-actions`.
+
+| Topic | Finding |
+|---|---|
+| Actions minutes | "The use of standard GitHub-hosted runners is free: in public repositories". Larger runners are always charged |
+| Rulesets | "Rulesets are available in public repositories with GitHub Free and GitHub Free for organizations, and in public and private repositories with GitHub Pro, GitHub Team, and GitHub Enterprise Cloud" (reusable). The `about-rulesets` page words it as "for customers on GitHub Team and GitHub Enterprise plans"; the reusable is read as the plan matrix |
+| Protected branches | Public repositories with Free and Free for organizations; private only on Pro, Team, Enterprise |
+| CODEOWNERS | Can be defined in public repositories with Free and Free for organizations; "require review from code owners" is a protected-branch option |
+| Environments | On Free, Pro and Team, required reviewers, wait timers, environment secrets, administrator bypass and custom protection rules are public-repository only |
+| Issue forms | `required` is enforced for public repositories only (#17) |
+| `.github` repo | Default templates need a public `.github` repo (tested, #16) |
+| Subscription auth | OAuth is "intended exclusively for purchasers of … subscription plans" for "ordinary use". "Anthropic does not permit third-party developers to … route requests through Free, Pro, or Max plan credentials on behalf of their users." The Action docs: an OAuth token "is tied to the subscription of the person who ran `claude setup-token`", API key recommended for a shared secret |
+| Who can trigger | Write access is required on issue and PR events (#18) |
+
+Corrections to earlier records:
+
+- The rulesets matrix in "Hard blockers" was second-hand; the raw reusable above replaces it. The
+  claim there that a ruleset on a private Free repo "can be created but is not enforced" is not
+  in the raw source and stays unverified.
+- #13 "Free private not addressed directly": environments are public-only on Free, so private
+  Free repos have none of these features.
+
+Implications (inference):
+
+- The premise of "Decision: option C" (GitHub cannot enforce gates on Free) holds for private
+  repos only. Public repos can use CODEOWNERS with a protected branch or ruleset, and
+  environment reviewers for deploy jobs. Whether to replace option C is open.
+- Cost reduces to AI usage; Actions minutes are free for standard runners.
+- A public repo with community-triggered AI runs on a personal subscription is the grey case
+  of the auth terms. An owner-gated trigger (label or comment needing write access) keeps runs
+  initiated by the owner. Not a legal opinion.
+- Issue and PR text from strangers is untrusted prompt input (#18).
+
+Unverified: which ruleset rule types exist on Free public repositories; whether owner-gated
+runs on a public repo count as "ordinary use"; Anthropic's position (a question to Anthropic
+is open).
