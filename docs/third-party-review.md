@@ -1231,3 +1231,31 @@ Unverified or not exercised: whether the poll needed more than one read; that th
 `children` again on the guard run (it was skipped either way); a partial-failure path of the
 creation loop; a split on an issue with a `.yml` form or several templates; three events in a
 row; A3 (the Anthropic reply).
+
+### Third-party action pins (read 2026-10-11)
+
+Source: `gh api` read-only calls on `repos/{owner}/{repo}/git/ref/tags/...`,
+`git/matching-refs/tags/...` and `git/tags/{sha}` for the three actions; `triage.yml` and
+`.github/actions/record-run/action.yml` at `workflows` `a07689a`; rule `build-and-maintenance`
+line 17.
+
+| Use in `triage.yml` | Tag | Numbered tag | Commit |
+|---|---|---|---|
+| `actions/checkout@v7` (lines 30, 35) | `v7` is a lightweight tag | `v7.0.1` | `3d3c42e5aac5ba805825da76410c181273ba90b1` |
+| `actions/upload-artifact@v7` (line 195) | `v7` is a lightweight tag | `v7.0.2` | `cf430e030ddbb5b0abf93d22962f4752f3646cd9` |
+| `anthropics/claude-code-action@v1` (line 61) | `v1` is an annotated tag; tag object `3526ba01...` | `v1.0.248` (newest numbered tag; its commit equals the `v1` commit) | `1d6de8cb0c237e7c15e9e1bdf973826ebae490cc` |
+| `becloud-dev/workflows/.github/actions/record-run@main` (line 185) | branch ref, first-party | not applicable | head of `main` at run time |
+
+Interpretation (inference):
+
+- A pin to the commit SHA of an annotated tag needs the dereferenced commit, not the tag-object
+  SHA.
+- `record-run` is bash and `jq` only, so it holds no third-party action to pin.
+- Version skew: the prompts are read at `job.workflow_sha`, the composite at `main` head. A
+  caller on an older workflow SHA runs the current `record-run`. Pinning the three actions does
+  not change this. Candidate fix: add `.github/actions` to the sparse checkout and use a local
+  path to the composite.
+
+Unverified: that a local-path `uses:` into a sparse-checked-out second repository works with
+`persist-credentials: false`; to be read in the GitHub docs before any edit. Not read: the
+release notes between the pinned numbered tags and the previous floating resolution.
