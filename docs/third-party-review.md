@@ -442,7 +442,11 @@ happens when a template names a label that does not exist in the repo (#17).
 - Subscription auth stays (`claude_code_oauth_token`) under that gate, and Anthropic is asked to
   confirm in writing that it fits the terms (user, 2026-10-11). Until the answer arrives the
   question stays open. A fallback is an API key or Bedrock.
-- Not decided: replacement of option C by native gates; a monitoring and metrics stage.
+- AI pull requests are opened under a custom GitHub App bot identity, so the code owner can
+  approve them under the native gate (user, 2026-10-11). How the bot opens the PR is open: the
+  Action "does not create pull requests automatically" (#18).
+- Option C was replaced by native gates on public repositories (see "Decision: option C").
+- Not decided: a monitoring and metrics stage.
 
 ### AI-generated output and copyright (read 2026-10-11)
 
@@ -506,3 +510,36 @@ Implications (inference):
 Unverified: which ruleset rule types exist on Free public repositories; whether owner-gated
 runs on a public repo count as "ordinary use"; Anthropic's position (a question to Anthropic
 is open).
+
+### Issue forms (#17), read 2026-10-11
+
+Sources: raw `github/docs` markdown (`syntax-for-issue-forms.md`, `syntax-for-githubs-form-schema.md`,
+`common-validation-errors-when-creating-issue-forms.md`, reusables `form-schema/*`,
+`community/issue-forms-beta`, `community/issue-forms-sample`). The `required` note was
+cross-checked on the rendered docs.github.com page.
+
+| Topic | Finding |
+|---|---|
+| Top-level keys | Required: `name` (unique, longer than 3 characters), `description`, `body`. Optional: `assignees`, `labels`, `title`, `type`, `projects` |
+| `labels` | "If a label does not already exist in the repository, it will not be automatically added to the issue": a missing label is dropped, no error documented. Closes the #16 gap |
+| `type` | "The issue type that will be automatically added … defined at the organization level". Behavior when the type does not exist is not stated |
+| `projects` | `PROJECT-OWNER/PROJECT-NUMBER`. The person opening the issue needs write permission on the project; otherwise the docs point to the project's auto-add workflow |
+| Elements | `markdown` (displayed, not submitted), `textarea`, `input`, `dropdown`, `checkboxes`, `upload` (docs flag `issue-form-upload`, present on the rendered page; size limits 10 to 100 MB by type) |
+| `required` | "Prevents form submission until element is completed. Only for public repositories." Same text on every element type that has it; `min_length` carries no such note |
+| Output | Responses are "converted to markdown and added to the body of an issue". No structured data. `id` is the key for URL query prefill |
+| Validation | Body needs one non-markdown field; unique `id`s and labels (also across checkbox options); labels that normalize alike clash; YAML boolean words (`yes`, `no`, `on`, `off`, ...) are forbidden as keys; dropdown options distinct and not `none` |
+| Status, scope | Issue forms and the form schema are public preview, "subject to change". Not supported for pull requests |
+
+Implications (inference, for public repositories):
+
+- `required` is enforced in the form. Issues created through the API or `gh` skip the form, so
+  the triage workflow still checks the body.
+- Triage reads a markdown body; form labels should stay stable because the body layout depends
+  on them (layout not shown in the docs read).
+- Labels named by a form must exist in each repo (sync step) or they are dropped without error.
+- Public preview: forms are pinned in `workflows` and re-checked at each release.
+
+Unverified: that `required` blocks submission in a public repo of a Free org (documented, not
+tested); what `type` does when the type is missing; the rendered body layout of a submitted
+form; the forbidden-word list for labels; any limit on body size or element count (none stated
+in the files read).
