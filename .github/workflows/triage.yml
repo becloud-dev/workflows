@@ -69,7 +69,7 @@ jobs:
           claude_args: |
             --model ${{ inputs.model }}
             --allowedTools "Bash(gh issue view:*),Read"
-            --json-schema '{"type":"object","properties":{"type":{"type":"string","enum":["Task","Bug","Feature"]},"priority":{"type":"string","enum":["Urgent","High","Medium","Low"]},"rationale":{"type":"string"}},"required":["type","priority","rationale"]}'
+            --json-schema '{"type":"object","properties":{"outcome":{"type":"string","enum":["triaged","needs_info"]},"type":{"type":"string","enum":["Task","Bug","Feature"]},"priority":{"type":"string","enum":["Urgent","High","Medium","Low"]},"rationale":{"type":"string"},"questions":{"type":"array","items":{"type":"string"},"maxItems":5}},"required":["outcome","rationale"]}'
 
       - name: Apply the verdict
         if: steps.claude.outputs.structured_output != ''
@@ -80,10 +80,29 @@ jobs:
           FIELD_ID: ${{ inputs.priority_field_id }}
         run: |
           set -euo pipefail
-          type=$(jq -er .type <<<"$VERDICT")
-          priority=$(jq -er .priority <<<"$VERDICT")
+          outcome=$(jq -er .outcome <<<"$VERDICT")
           jq -er .rationale <<<"$VERDICT" > "$RUNNER_TEMP/rationale.txt"
           api="repos/$GITHUB_REPOSITORY/issues/$ISSUE"
+          if [ "$outcome" = needs_info ]; then
+            {
+              echo "More information is needed before this can be triaged:"
+              echo
+              jq -er '.questions | select(type == "array" and length >= 1 and length <= 5)
+                      | to_entries | map("\(.key + 1). \(.value)") | .[]' <<<"$VERDICT"
+              echo
+              echo "Reason: $(cat "$RUNNER_TEMP/rationale.txt")"
+            } > "$RUNNER_TEMP/comment.txt"
+            gh issue edit "$ISSUE" --add-label needs-info
+            gh issue view "$ISSUE" --json labels --jq '.labels[].name' | grep -qx needs-info
+            {
+              echo "### Verdict written"
+              echo "- outcome: \`needs_info\`; label \`needs-info\` read back"
+            } >> "$GITHUB_STEP_SUMMARY"
+            gh issue comment "$ISSUE" --body-file "$RUNNER_TEMP/comment.txt"
+            exit 0
+          fi
+          type=$(jq -er .type <<<"$VERDICT")
+          priority=$(jq -er .priority <<<"$VERDICT")
           gh api -X PATCH "$api" -f type="$type" --silent
           jq -n --argjson id "$FIELD_ID" --arg v "$priority" \
             '{issue_field_values:[{field_id:$id,value:$v}]}' \
