@@ -193,7 +193,7 @@ jobs:
             if [ "$target" = new ]; then
               k=$((k + 1))
               title="v${major}.$((minor + k - 1)).0"
-              due=$(date -u -d "@$((today_midnight + k * RELEASE_DAYS * 86400))" +%Y-%m-%dT%H:%M:%SZ)
+              due=$(date -u -d "@$((today_midnight + k * RELEASE_DAYS * 86400 + 43200))" +%Y-%m-%dT%H:%M:%SZ)
               theme=$(jq -r ".milestones[$idx].theme" "$RUNNER_TEMP/plan.json")
               number=$(gh api -X POST "repos/$GITHUB_REPOSITORY/milestones" \
                 -f title="$title" -f description="$theme" -f due_on="$due" --jq .number)
