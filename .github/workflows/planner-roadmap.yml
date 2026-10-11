@@ -214,12 +214,18 @@ jobs:
         if: always() && steps.claude.outputs.structured_output != ''
         env:
           APPLY: ${{ inputs.apply }}
+          APPLY_OUTCOME: ${{ steps.apply.outcome }}
         run: |
           set -euo pipefail
+          case "$APPLY_OUTCOME" in
+            success) state=applied ;;
+            failure) state="apply failed, milestones and assignments may be partly written" ;;
+            *) [ "$APPLY" = true ] && state="not applied, the plan was rejected" || state="dry run" ;;
+          esac
           jq -n --slurpfile in .planner/roadmap-input.json --slurpfile v "$RUNNER_TEMP/plan.json" \
             '{input: $in[0], plan: $v[0]}' > .planner/roadmap-report.json
           {
-            echo "### Roadmap ($([ "$APPLY" = true ] && echo applied || echo dry run))"
+            echo "### Roadmap ($state)"
             jq -r --slurpfile in .planner/roadmap-input.json '
               ($in[0].issues | map({key: (.number|tostring), value: .}) | from_entries) as $i
               | .milestones | to_entries[]
