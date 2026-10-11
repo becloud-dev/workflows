@@ -1285,3 +1285,28 @@ Unverified: that `$/` resolves as documented inside a reusable workflow on a liv
 unresolvable `uses` fails at job setup, before any step, so a failure would fail the whole job,
 not only the record step. The first live run on the sandbox is the test; callers use `@main`, so
 a push makes it live for every caller (only the sandbox today).
+
+### Live results: pins and the self-repository reference (2026-10-11)
+
+Source: `gh` read-only calls on `becloud-dev/triage-sandbox` after `workflows` `80ccb02` was
+pushed to `main`; the `triage` label applied to #8 by the user's go; run `38175350506`
+(`success`); run log and run-record artifact read.
+
+| Check | Finding |
+|---|---|
+| Workflow commit | `Uses: becloud-dev/workflows/.github/workflows/triage.yml@refs/heads/main (80ccb02dbfa88c30febba91e0753bb2ab962ebef)` |
+| Pinned actions | log shows `actions/checkout`, `anthropics/claude-code-action` and `actions/upload-artifact` downloaded at the pinned SHAs |
+| `record-run` | `Run becloud-dev/workflows/.github/actions/record-run@80ccb02dbfa88c30febba91e0753bb2ab962ebef`; step `success` |
+| Guard on #8 | `sub_issues_summary.total` stays 3; one more triage comment; start label removed |
+| Run record | `claude-haiku-5-5`, `oauth`, `is_error` false, `num_turns` 5, `total_cost_usd` 0.0021553, 0 denials |
+
+Interpretation (inference): `$/.github/actions/record-run` resolved to the same commit as the
+called workflow, so the version skew recorded above is gone for this run. The pins did not
+change behaviour.
+
+Also read: the log downloads `oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6`,
+which is not in `triage.yml`; it is presumably pulled by `claude-code-action`. Its source was
+not read. The parent of the mixed issue was typed `Task` here and `Feature` in earlier runs.
+
+Unverified or not exercised: `$/` from a caller on a SHA other than `main` head; zizmor on the
+workflow; a Dependabot config; the `setup-bun` pin inside `claude-code-action`.
