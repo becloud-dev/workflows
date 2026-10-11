@@ -1006,6 +1006,38 @@ Interpretation (inference):
   charge. What the subscription is charged is unverified.
 - One triage costs about half a cent at list price, mostly cache tokens.
 
-Unverified or not exercised: concurrency (a second `triage` during a run, Round 5 item 13);
-`needs-info`, the format fix and the split; the haiku verdict quality on real issues; A3 (the
-Anthropic reply); the "Workflow identity" block of the job summary.
+Unverified or not exercised: `needs-info`, the format fix and the split; the haiku verdict
+quality on real issues; A3 (the Anthropic reply); the "Workflow identity" block of the job
+summary. Concurrency is covered in the next subsection.
+
+### Live results: concurrency (2026-10-11)
+
+Source: `gh` read-only calls on `becloud-dev/triage-sandbox` after one sandbox write sequence on
+the user's go: issue #2 created; label `triage` added at 18:47:21Z, added again at about
+18:47:28Z, removed and re-added by 18:47:33Z. Runs `38165283016` (A) and `38165294100` (B). This
+settles item 8 of section B in "Live confirmations before triage"; the earlier citation "Round 5
+item 13" does not exist (Round 5 has items 1 to 10) and is corrected.
+
+| Observation | Value |
+|---|---|
+| Add events sent / runs created for issue #2 | 3 / 2 |
+| Run A | created 18:47:25Z, job 18:47:28Z to 18:48:16Z, all steps `success` |
+| Run B | created 18:47:35Z, `pending` while A was `in_progress`; job 18:48:19Z to 18:48:51Z, all steps `success` |
+| Issue after both runs | type `Bug`, Priority `High`, labels none, 2 comments (18:48:10Z, 18:48:46Z) |
+
+Interpretation (inference):
+
+- Job-level `concurrency` (group `triage-<issue>`, `cancel-in-progress: false`) on a job that
+  calls a reusable workflow serializes runs: B waited `pending` and started 3 s after A ended;
+  nothing was cancelled. The docs do not mention this case; the live run does.
+- Adding a label already present fired no `labeled` event: 3 adds produced 2 runs.
+- B's "Remove the start label" step succeeded although A had most likely removed the label
+  already (label state at that instant not read), so `gh issue edit --remove-label` on an absent
+  label does not fail the step.
+- A queued run is a full second run: B repeated the classification and posted a second comment
+  with the same type and priority and different wording. Two quick applications cost two haiku
+  calls and two comments.
+
+Unverified or not exercised: three events in a row (the docs say the middle pending run is
+cancelled); which docs variant (`queue: single|max`, flag `actions-nga`) applies on Free; whether
+a duplicate comment matters to the owner (a design question, not a defect found).

@@ -1,24 +1,22 @@
 # New session start
 
 ## Status
-2026-10-11T15:42-03:00: becloud-dev shared AI workflows. First live triage run passed on the
-sandbox; findings recorded in section 5, committed locally, not pushed.
+2026-10-11T15:51-03:00: becloud-dev shared AI workflows. First live triage run and the
+concurrency test passed on the sandbox; findings in section 5, committed locally, not pushed.
 
 ## Resume here (first command: `git log --oneline @{u}..HEAD`)
-1. R5: label a second issue `triage` while a run is active and read `gh run list` for queued or
-   cancelled (concurrency, Round 5 item 13). A write to the sandbox only, on the user's go.
-2. A3: the user reports Anthropic's reply on subscription OAuth for a public project.
-3. Stage 1 draft (split, needs-info, format fix) shown before any write; then a haiku quality
+1. A3: the user reports Anthropic's reply on subscription OAuth for a public project.
+2. Stage 1 draft (split, needs-info, format fix) shown before any write; then a haiku quality
    check on a small sample of real issues.
-4. When the org-level work ends: `gh auth refresh --remove-scopes admin:org` (the effect on
+3. When the org-level work ends: `gh auth refresh --remove-scopes admin:org` (the effect on
    `read:org` is untested).
 
-## Git state (2026-10-11T15:42-03:00)
-- `workflows`: `main`, 1 ahead of `origin/main` (`ee36599`, unpushed), no stash, no PRs.
-  44 commits before this refresh, which adds one.
+## Git state (2026-10-11T15:51-03:00)
+- `workflows`: `main`, 1 ahead of `origin/main` (`ac3d11f`, unpushed), no stash, no PRs.
+  46 commits including this refresh.
 - Local branch `backup-pre-rewrite` keeps the pre-rewrite history with the personal address:
   never push it; delete it when no longer needed.
-- Sibling clone `../triage-sandbox`: `main` equals `origin/main` at `0929a1b`; issue #1 open.
+- Sibling clone `../triage-sandbox`: `main` equals `origin/main` at `0929a1b`; issues #1, #2 open.
 
 ## Done and verified (section 5 of `docs/third-party-review.md`)
 - Remote `becloud-dev/workflows`, public, pushed; head equals local after the rewrite
@@ -28,6 +26,8 @@ sandbox; findings recorded in section 5, committed locally, not pushed.
 - Run `38164369843` (issue #1): all steps success, type Bug, Priority Urgent, one comment,
   `triage` label removed, `permission_denials_count` 0, `total_cost_usd` 0.00467535, OAuth
   (verified via `gh run view`, `gh issue view`, `issue-field-values`, record artifact).
+- Concurrency (issue #2): 3 adds, 2 runs; B pending until A ended, both success, 2 comments
+  (verified via `gh run list`, `gh run view`, `gh issue view`).
 - Author identity in both repos: `53844142+bentoluizv@users.noreply.github.com`; the 43 pushed
   commits were rewritten and force-pushed (all author and committer emails read back).
 
@@ -44,7 +44,7 @@ sandbox; findings recorded in section 5, committed locally, not pushed.
   purge needs delete and recreate, or GitHub Support. Not requested.
 - Not read: `job.workflow_sha` value (job summary not in the API); `costBasis: list` meaning on
   OAuth; `licenseInfo` null on the first repo view (LICENSE file is present).
-- Not exercised: concurrency, `needs-info`, format fix, split; `issue_fields` as a
+- Not exercised: three-event case, `needs-info`, format fix, split; `issue_fields` as a
   `permissions:` key; `suggest`; `vars` in a called workflow; Projects v2; auto-merge.
 - `ubuntu-latest` moves to Ubuntu 26 on 2026-10-19 (notice only).
 
