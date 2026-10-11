@@ -1,58 +1,58 @@
 # New session start
 
 ## Status
-2026-10-11T14:55-03:00: becloud-dev shared AI workflows, docs only. Section 4 Rounds 1-5
-recorded; org issue fields read live. The user skips the UI pin check: the probe run shows it.
+2026-10-11T15:18-03:00: becloud-dev shared AI workflows. Triage probe files committed locally;
+sandbox repo and org secret exist. Blocked: the user's A4, A6b, A7, A3, then the first run.
 
 ## Resume here (first command: `git log --oneline`)
-1. The user reports pass/fail with exact error text: Anthropic question sent; public remotes
-   created; sandbox repo; org secret and variables; sandbox labels, issue types, Actions
-   setting.
-2. Draft the probe (triage reusable workflow + consumer caller), shown before any write; the
-   user commits and pushes. Needs the real repo, secret and variable names first.
-3. Then the triage workflow draft (stage 1), shown before any write; then a haiku quality
-   check on a small sample of real issues.
+1. The user reports pass/fail with exact error text: A6b variables `OWNERS`,
+   `PRIORITY_FIELD_ID=48149712` on the sandbox; A7 labels `triage`, `needs-info`, issue types,
+   Actions setting; A3 Anthropic question; A4 public remote + push (the user's call).
+2. R1 after A4: copy `docs/probe/consumer-triage.yml` to the sandbox
+   `.github/workflows/triage.yml` on `main`. R2-R4: test issue, apply `triage`, report the
+   run summary and step conclusions.
+3. Record the run in section 5 (text shown first), correct what it contradicts; then the
+   stage 1 workflow draft and a haiku quality check on real issues.
 
-## Git state (2026-10-11T14:55-03:00)
+## Git state (2026-10-11T15:18-03:00)
 - Branch `main`, clean (`git status -sb`), no stash (`git stash list`); no remote, no upstream,
-  nothing pushed (`git remote -v`; `git log @{u}..HEAD` fails with no upstream).
-- 38 commits (`git log --oneline | wc -l`) before this refresh, which adds one. No PRs (no
-  remote). Org `becloud-dev` repo list not re-checked this session.
+  nothing pushed (`git remote -v`; `git log @{u}..HEAD` fails).
+- 42 commits (`git log --oneline | wc -l`) before this refresh, which adds one. No PRs.
+- `becloud-dev` has one repo, `triage-sandbox`, public (`gh repo list becloud-dev`).
 
 ## Done and verified (section 5 of `docs/third-party-review.md`)
-- Review #1-#21, monitoring, stage design, issue field and `type` write payloads (OpenAPI
-  2026-03-10, raw).
-- Live, via `gh api orgs/becloud-dev/issue-fields` with the user's login (not `GITHUB_TOKEN`):
-  4 fields; Priority id `48149712`, single select, 4 default options Urgent, High, Medium, Low
-  with `priority` rank 1-4; descriptions null; `visibility` organization_members_only.
-- Round 5 items 1-9 in section 4 (commit `6f50511`); live result in section 5 (`082aa87`).
+- Review #1-#21, monitoring, stage design, write payloads; issue field list and Priority
+  object read live (id `48149712`, options Urgent, High, Medium, Low, rank in `priority`).
+- Round 5 items 1-10 in section 4 (commits `6f50511`, `7ac8757`).
+- Sandbox repo created; org secret `CLAUDE_CODE_OAUTH_TOKEN`, visibility SELECTED, repo list
+  `triage-sandbox` only (`gh secret list --org becloud-dev`); CLI token has `admin:org`.
+- Probe files (commits `608936a`, `7aa3e72`): `.github/workflows/triage.yml`,
+  `.github/actions/record-run/action.yml`, `prompts/triage.md`, `docs/probe/consumer-triage.yml`.
+  YAML parses and the `jq` was run on sample JSON; `actionlint` not run, nothing run on GitHub.
+- `GET issue-field-values` keys `issue_field_id`, `single_select_option.name` and issue
+  `type.name` read raw (OpenAPI 1.1.4).
 
 ## Decisions (user)
-- 2026-10-11: framework-agnostic, GitHub-native; English; Free plan; all repos public (probe
-  repo too); MIT, holder Bento Machado. Native gates; owners-variable label gate; only the
-  code owner starts runs.
-- Subscription auth under that gate, Anthropic to confirm; Bedrock later; model per stage is a
-  caller input, full IDs pinned; AI PRs under a custom App bot.
-- Stage design: section 4 Rounds 3-4; triage: Round 5 (start by owner label `triage`, no App,
-  read-only Claude step, `needs-info`, sub-issues via `--parent`).
-- Priority keeps GitHub's defaults (Round 5 item 9): no `P1`-`P5`, no fallback labels.
-- Priority pins to Task, Bug, Feature, "Issues without a type" and the option-count limit are
-  not checked in the UI; the probe run shows whether the write lands.
+- 2026-10-11: framework-agnostic, GitHub-native; English; Free plan; all repos public; MIT,
+  holder Bento Machado. Native gates; owners-variable gate; only the code owner starts runs.
+- Subscription OAuth auth (Round 5 item 10), Anthropic to confirm; Bedrock later; model per
+  stage a caller input, full IDs pinned; AI PRs under a custom App bot.
+- Stage design: section 4 Rounds 3-5. Priority keeps GitHub defaults, no `P1`-`P5`.
+- UI pin checks skipped; the probe run shows whether the write lands.
 
 ## Open and unverified
-- To send: question to Anthropic on subscription OAuth for a public project (drafted).
-- `organization_members_only` effect on a public repo (not read).
-- Live A: `GITHUB_TOKEN` writes type, Priority, sub-issues. Live B: `job.workflow_sha`
-  cross-repo; `vars` via `with:`; haiku ID, allowlist; result fields; label removal,
-  `concurrency`; org secret on a public repo. Probe needs a remote for `workflows` + sandbox.
-- Not verified: `--json-schema` in `claude_args` gives `structured_output`; `issue_fields` as
-  a workflow `permissions:` key; what a `suggest` type looks like; `vars` inside a called
-  workflow; Projects v2 writes; code-owner approval by `GITHUB_TOKEN`; native auto-merge;
-  release PR checks with an App token; Pro limit; OAuth cost fields; `$/` cross-repo.
+- Not yet by the user: A3, A4, A6b (`gh variable list --repo becloud-dev/triage-sandbox` empty),
+  A7 labels (`triage`, `needs-info` absent), issue types and Actions setting (unchecked).
+- Live A: `GITHUB_TOKEN` writes type, Priority (names as value); Live B: `job.workflow_sha`
+  cross-repo; `vars` via `with:`; `GH_TOKEN` reaching the Claude process; allowlist; composite
+  at `@main`; OAuth cost fields; label removal; `concurrency`; secret read by a public repo.
+- Not verified: `issue_fields` as a `permissions:` key; `suggest`; `vars` in a called
+  workflow; Projects v2 writes; auto-merge; release PR checks with an App token; Pro limit;
+  `$/` cross-repo; `organization_members_only` on a public repo.
 
 ## Pointers
 - `docs/third-party-review.md`: flow, mapping, review list, decisions (4), findings (5).
-  Inspiration: `bentoluizv/patagonia-trip`. Flow image outside the repo.
+  Probe: `.github/`, `prompts/`, `docs/probe/`. Inspiration: `bentoluizv/patagonia-trip`.
 
 ## Conventions in force
 - Plan gate: exact text before any write; local commits per verified step; no push without a go.
