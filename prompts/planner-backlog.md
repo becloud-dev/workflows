@@ -34,7 +34,8 @@ Return `{number, gap, evidence}` for:
 - `no_type`: the issue has no `type`.
 - `duplicate`: two issues in the input ask for the same change. Report the later one, set
   `duplicate_of` to the earlier number, and quote both titles in `evidence`. Report it only when
-  the text states the same change, not a related one.
+  the text states the same change, not a related one. When the two carry different `priority`
+  values, state both in `evidence`; do not change either.
 
 Include `unprioritised` issues in `gaps` only for `no_type` or `duplicate`.
 
