@@ -142,6 +142,29 @@ Round 3 (user, 2026-10-11; recommended answers accepted by "Proceed"):
 9. The AI does not merge: the check posts its result and the owner approves and merges.
    Native auto-merge enabled by the bot stays an unverified alternative.
 
+Round 4 (user, 2026-10-11; recommended answers accepted by "Go"):
+
+1. Planner 2a writes only a report (job summary and monitoring artifact), no issue writes.
+2. Planner 2b creates milestones (title = version, `due_on` = ETA) and assigns issues. The owner
+   approves by applying `RELEASE` or `UX/UI` per issue, which is also the start signal for
+   stage 3 or 4.
+3. Names: labels `RELEASE`, `UX/UI`, `READY TO LIVE`, `release-blocker`; transient start label
+   `triage`; Priority options `P1` to `P5` with a criticality description each, defined in the
+   triage prompt; fallback labels `P1` to `P5`.
+4. `RELEASE` and `UX/UI` persist as state and start a run on `labeled`; only `triage` is removed
+   at the end. A re-run is remove and re-add. Amends Round 3 item 3.
+5. `READY TO LIVE` is set by the owner on the release PR after approving the Opus review (the
+   review starts by an owner comment). Merge gate: label present and zero open `release-blocker`.
+6. Stage 4 plan is an issue comment with a marker line, not a repo file; the owner's approving
+   comment starts the haiku execution.
+7. Stage 4 consumer contract: optional string inputs `setup_command`, `check_command`,
+   `test_command`, filled from repo `vars` in the caller, no defaults, nothing stack-specific in
+   the shared repo; each command is also the `Bash(...)` allowlist entry. Project conventions
+   stay in the consumer's `AGENTS.md` or `CLAUDE.md`.
+8. Prompt lookup: second checkout into `.ai-workflows/` (sparse `prompts/`, no persisted
+   credentials) at `job.workflow_repository` and `job.workflow_sha`; the prompt says to read
+   `.ai-workflows/prompts/<stage>.md`. No consumer override.
+
 ## 5. Findings
 
 ### Hard blockers (#4, #5, #8, #11-#14), read 2026-10-11

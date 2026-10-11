@@ -6,8 +6,7 @@ monitoring, stage design (section 4 Round 3), round 4 inputs recorded; #22 defer
 confirmation postponed.
 
 ## Resume here (first command: `git log --oneline`)
-1. Show exact text, then on a go record the round 4 decisions below in section 4 (section 5
-   "Live confirmations before triage" is recorded).
+1. Recorded, no go pending: section 4 Round 4; section 5 "Live confirmations before triage".
 2. Read the reachable REST docs: `issue-field-values` payload, `type` on issue update.
 3. Triage round: questions (start on `triage` label vs `opened`, missing-information
    handling, sub-issue loop-back), then the draft shown before any write.
@@ -31,7 +30,7 @@ confirmation postponed.
 - Subscription auth under that gate, Anthropic to confirm; Bedrock later; model per stage is a
   caller input, full IDs pinned; AI PRs under a custom App bot. Monitoring and stage design:
   section 5 and section 4 Round 3.
-- Round 4, "Go" on 8 recommendations (not yet in section 4): 2a writes only a report; 2b
+- Round 4, "Go" on 8 recommendations (section 4, Round 4): 2a writes only a report; 2b
   creates milestones and assigns issues, owner approves by applying `RELEASE`/`UX/UI`; labels
   `RELEASE`, `UX/UI`, `READY TO LIVE`, `release-blocker`, transient `triage`, Priority `P1`-`P5`
   (fallback labels); `RELEASE`/`UX/UI` persist (amends Round 3 item 3); `READY TO LIVE` set by
