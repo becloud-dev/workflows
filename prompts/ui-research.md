@@ -24,7 +24,9 @@ Return:
 - `components`: objects with `name`, `source` and `note`; reuse an existing component where the
   repository has one (`Grep`, `Glob`), else say it is new.
 - `tokens`: objects with `role`, `value` and `source`.
-- `gaps`: strings; empty when none.
+- `gaps`: strings; empty when none. List here, one string each, every assumption the layout rests on
+  that neither the issue nor the UX research states, such as whether the change sits on a list of
+  items or on a single item.
 - `rationale`: one sentence.
 
 The design follows the UX research: every element in its `screen_elements` appears in `layout`, in
