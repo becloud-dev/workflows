@@ -1688,6 +1688,24 @@ Unverified: the report header on the runner (the job summary is not in the artif
 Not exercised live: an integer `target` into an open milestone with capacity; the model opened
 new milestones although existing ones had room. Covered by fixtures only.
 
+### Decision: stage 2b closed (user, 2026-10-11)
+
+Stage 2b is closed on the sandbox at `workflows` `967d0c1`: dry run, apply, error budget with and
+without hold, due date probe and fix, report header fix, due date base fix. Tests stay on
+`becloud-dev/triage-sandbox`; grouping quality on real issues is checked when the full flow runs
+on a real project. Work continues with the issue type `Project` round, then stage 3.
+
+Gaps carried forward (recorded, not closed):
+
+| Gap | Why it matters | What would close it |
+|---|---|---|
+| Integer `target` into an open milestone never exercised live | the model opened new milestones although two had room; the validate side ran on fixtures only | an issue that clearly belongs to an existing milestone, then a dispatch |
+| Validate abort on a bad plan, on the runner | the 12 `jq` cases ran locally only; the workflow has no injection point | a forced bad plan, or a test-only input (changes the production workflow) |
+| Due date base rule (`1325e84`) live | fixtures on jq 1.7.1 only; no run since with dated milestones and something to plan | one run on a sandbox with open issues to plan and dated milestones |
+| Report header on the runner | the job summary is not in the artifact; `steps.apply.outcome` read from the docs | read the job summary of the next run in the browser |
+| Grouping quality | the no-hold run made two single-issue milestones with room elsewhere | a run on a real project, as decided |
+| No age rule; Urgent-first across milestones not enforced | carried from 2a and the 2b design | decisions for stage 3 |
+
 ### Queued after stage 2b
 
 Issue type `Project` (org level; triage splits it into sub-issues), the issue form
