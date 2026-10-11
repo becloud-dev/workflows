@@ -1,0 +1,262 @@
+name: planner-roadmap
+
+on:
+  workflow_call:
+    inputs:
+      model:
+        type: string
+        required: true
+      owners:
+        description: Comma-separated logins, no spaces
+        type: string
+        required: true
+      release_days:
+        type: number
+        required: true
+      max_issues:
+        type: number
+        required: true
+      max_releases:
+        type: number
+        required: true
+      bug_budget:
+        description: Open Bug share above which Features are held, 0 to 1
+        type: number
+        required: true
+      apply:
+        description: Create milestones and assign issues; false only reports
+        type: boolean
+        default: false
+    secrets:
+      claude_code_oauth_token:
+        required: true
+
+permissions: {}
+
+jobs:
+  planner-roadmap:
+    name: Planner roadmap
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: contains(format(',{0},', inputs.owners), format(',{0},', github.event.sender.login))
+    permissions:
+      contents: read
+      issues: write # create milestones and set the milestone of an issue; only when apply is true
+    steps:
+      - name: Check out the caller repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check out the shared prompts
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .ai-workflows
+          sparse-checkout: prompts
+          persist-credentials: false
+
+      - name: Build the roadmap input
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MAX_RELEASES: ${{ inputs.max_releases }}
+          MAX_ISSUES: ${{ inputs.max_issues }}
+          BUG_BUDGET: ${{ inputs.bug_budget }}
+        run: |
+          set -euo pipefail
+          mkdir -p .planner
+          gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/issues?state=open&per_page=100" \
+            | jq '
+              def rank: if . == null then 9 else ({"Urgent":1,"High":2,"Medium":3,"Low":4}[.] // 9) end;
+              add
+              | map(select(has("pull_request") | not))
+              | map({
+                  number, title, created_at,
+                  milestone: (.milestone.number // null),
+                  type: (.type.name // null),
+                  priority: ((.issue_field_values // []
+                              | map(select(.issue_field_name == "Priority"))[0]
+                              .single_select_option.name) // null),
+                  labels: [.labels[].name],
+                  sub_issues: (.sub_issues_summary.total // 0),
+                  body: ((.body // "")[0:600])
+                })' > .planner/open.json
+          gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/milestones?state=open&per_page=100" \
+            | jq 'add | map({number, title, due_on, open_issues})' > .planner/milestones.json
+          # versions already used: every milestone title and every tag, vX.Y.Z only
+          gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/milestones?state=all&per_page=100" \
+            | jq '[add[].title]' > .planner/titles.json
+          gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/tags?per_page=100" \
+            | jq '[add[].name]' > .planner/tags.json
+          jq -n \
+            --slurpfile open .planner/open.json \
+            --slurpfile ms .planner/milestones.json \
+            --slurpfile titles .planner/titles.json \
+            --slurpfile tags .planner/tags.json \
+            --argjson max_releases "$MAX_RELEASES" --argjson max_issues "$MAX_ISSUES" \
+            --argjson budget "$BUG_BUDGET" '
+              def rank: if . == null then 9 else ({"Urgent":1,"High":2,"Medium":3,"Low":4}[.] // 9) end;
+              def semver: capture("^v(?<a>[0-9]+)\\.(?<b>[0-9]+)\\.(?<c>[0-9]+)$")
+                          | [(.a|tonumber), (.b|tonumber), (.c|tonumber)];
+              ($open[0]) as $all
+              | ([$all[] | select(.type == "Bug")] | length) as $bugs
+              | ([$all[] | select(.type == "Feature")] | length) as $feats
+              | (if ($bugs + $feats) == 0 then 0 else ($bugs / ($bugs + $feats)) end) as $share
+              | ([$titles[0][], $tags[0][] | try semver catch empty] | sort | last) as $top
+              | ($all | map(select(.milestone == null)
+                            | select(any(.labels[]; .name == "needs-info") | not))
+                      | sort_by([(.priority | rank), .created_at])) as $cand
+              | {
+                  total: ($cand | length),
+                  truncated: (([$cand[] | select(.priority != null)] | length) > 100),
+                  issues: ([$cand[] | select(.priority != null)] | .[0:100]),
+                  unprioritised: [$cand[] | select(.priority == null) | del(.body)],
+                  milestones: [$ms[0][] | . + {capacity: ($max_issues - .open_issues)}
+                                         | select(.capacity > 0)],
+                  limits: {
+                    max_releases: $max_releases, max_issues: $max_issues,
+                    bug_budget: $budget, bug_share: $share,
+                    hold_features: ($share > $budget)
+                  },
+                  next_minor: (if $top == null then [0, 1, 0] else [$top[0], ($top[1] + 1), 0] end)
+                }' > .planner/roadmap-input.json
+          {
+            echo "### Roadmap input"
+            echo "- open, no milestone, no PR, no needs-info: $(jq .total .planner/roadmap-input.json)"
+            echo "- ranked set sent to the model: $(jq '.issues | length' .planner/roadmap-input.json)"
+            echo "- open milestones with room: $(jq '.milestones | length' .planner/roadmap-input.json)"
+            echo "- Bug share: $(jq '.limits.bug_share' .planner/roadmap-input.json) against budget $BUG_BUDGET; hold Features: $(jq '.limits.hold_features' .planner/roadmap-input.json)"
+            echo "- first new version: $(jq -r '.next_minor | "v\(.[0]).\(.[1]).\(.[2])"' .planner/roadmap-input.json)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Plan
+        id: claude
+        uses: anthropics/claude-code-action@1d6de8cb0c237e7c15e9e1bdf973826ebae490cc # v1.0.248
+        with:
+          claude_code_oauth_token: ${{ secrets.claude_code_oauth_token }}
+          github_token: ${{ github.token }}
+          prompt: |
+            Repository: ${{ github.repository }}
+            Read .ai-workflows/prompts/planner-roadmap.md and follow it.
+            The input is .planner/roadmap-input.json.
+          claude_args: |
+            --model ${{ inputs.model }}
+            --allowedTools "Read"
+            --json-schema '{"type":"object","properties":{"milestones":{"type":"array","items":{"type":"object","properties":{"target":{"type":["string","integer"]},"theme":{"type":"string","maxLength":120},"issues":{"type":"array","items":{"type":"object","properties":{"number":{"type":"integer"},"reason":{"type":"string"}},"required":["number","reason"]}}},"required":["target","theme","issues"]}},"held":{"type":"array","items":{"type":"object","properties":{"number":{"type":"integer"},"reason":{"type":"string"}},"required":["number","reason"]}},"unplanned":{"type":"array","items":{"type":"object","properties":{"number":{"type":"integer"},"reason":{"type":"string"}},"required":["number","reason"]}},"summary":{"type":"string"}},"required":["milestones","held","unplanned","summary"]}'
+
+      - name: Validate the plan
+        if: steps.claude.outputs.structured_output != ''
+        env:
+          VERDICT: ${{ steps.claude.outputs.structured_output }}
+        run: |
+          set -euo pipefail
+          printf '%s\n' "$VERDICT" > "$RUNNER_TEMP/plan.json"
+          jq -e --slurpfile in .planner/roadmap-input.json '
+            ($in[0]) as $i
+            | ($i.issues | map({key: (.number|tostring), value: .}) | from_entries) as $by
+            | ([.milestones[].issues[].number] + [.held[].number] + [.unplanned[].number]) as $all
+            | ($i.milestones | map(.number)) as $open
+            | ($i.milestones | map({key: (.number|tostring), value: .capacity}) | from_entries) as $cap
+            | ($all | sort) == ($i.issues | map(.number) | sort)
+              and ($all | length) == ($all | unique | length)
+              and ([.milestones[] | select(.target == "new")] | length) <= $i.limits.max_releases
+              and all(.milestones[];
+                    (.issues | length) <= (if .target == "new" then $i.limits.max_issues
+                                           else ($cap[(.target | tostring)] // -1) end))
+              and all(.milestones[] | select(.target != "new"); (.target | IN($open[])))
+              and (if $i.limits.hold_features
+                   then ([.held[].number] | all(. as $n | $by[($n|tostring)].type == "Feature"))
+                        and ([.milestones[].issues[].number]
+                             | all(. as $n | $by[($n|tostring)].type != "Feature"))
+                        and ([$i.issues[] | select(.type == "Feature") | .number] | sort)
+                            == ([.held[].number] | sort)
+                   else (.held | length) == 0 end)' \
+            "$RUNNER_TEMP/plan.json" > /dev/null
+
+      - name: Apply the plan
+        id: apply
+        if: inputs.apply && steps.claude.outputs.structured_output != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_DAYS: ${{ inputs.release_days }}
+        run: |
+          set -euo pipefail
+          k=0
+          minor=$(jq -r '.next_minor[1]' .planner/roadmap-input.json)
+          major=$(jq -r '.next_minor[0]' .planner/roadmap-input.json)
+          : > "$RUNNER_TEMP/applied.tsv"
+          n_ms=$(jq '.milestones | length' "$RUNNER_TEMP/plan.json")
+          for idx in $(seq 0 $((n_ms - 1))); do
+            target=$(jq -r ".milestones[$idx].target" "$RUNNER_TEMP/plan.json")
+            if [ "$target" = new ]; then
+              k=$((k + 1))
+              title="v${major}.$((minor + k - 1)).0"
+              due=$(date -u -d "today 00:00:00 + $((k * RELEASE_DAYS)) days" +%Y-%m-%dT%H:%M:%SZ)
+              theme=$(jq -r ".milestones[$idx].theme" "$RUNNER_TEMP/plan.json")
+              number=$(gh api -X POST "repos/$GITHUB_REPOSITORY/milestones" \
+                -f title="$title" -f description="$theme" -f due_on="$due" --jq .number)
+            else
+              number="$target"
+              title=$(jq -r --argjson n "$number" '.milestones[] | select(.number == $n) | .title' .planner/roadmap-input.json)
+              due=""
+            fi
+            for issue in $(jq -r ".milestones[$idx].issues[].number" "$RUNNER_TEMP/plan.json"); do
+              gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/$issue" -F milestone="$number" --silent
+              got=$(gh api "repos/$GITHUB_REPOSITORY/issues/$issue" --jq '.milestone.number // 0')
+              [ "$got" = "$number" ] || { echo "::error::issue #$issue milestone is $got, expected $number"; exit 1; }
+              printf '%s\t%s\t%s\t%s\n' "$title" "$number" "$due" "$issue" >> "$RUNNER_TEMP/applied.tsv"
+            done
+          done
+
+      - name: Render the report
+        if: always() && steps.claude.outputs.structured_output != ''
+        env:
+          APPLY: ${{ inputs.apply }}
+        run: |
+          set -euo pipefail
+          jq -n --slurpfile in .planner/roadmap-input.json --slurpfile v "$RUNNER_TEMP/plan.json" \
+            '{input: $in[0], plan: $v[0]}' > .planner/roadmap-report.json
+          {
+            echo "### Roadmap ($([ "$APPLY" = true ] && echo applied || echo dry run))"
+            jq -r --slurpfile in .planner/roadmap-input.json '
+              ($in[0].issues | map({key: (.number|tostring), value: .}) | from_entries) as $i
+              | .milestones | to_entries[]
+              | "#### \(if .value.target == "new" then "new release \(.key + 1)" else "milestone #\(.value.target)" end): \(.value.theme)",
+                (.value.issues[] | "- #\(.number) [\($i[.number|tostring].priority)] \($i[.number|tostring].title): \(.reason)")' \
+              "$RUNNER_TEMP/plan.json"
+            echo
+            echo "### Held by the error budget"
+            jq -r '.held[] | "- #\(.number): \(.reason)"' "$RUNNER_TEMP/plan.json"
+            echo
+            echo "### Unplanned"
+            jq -r '.unplanned[] | "- #\(.number): \(.reason)"' "$RUNNER_TEMP/plan.json"
+            echo
+            echo "### Unprioritised"
+            jq -r '.unprioritised[] | "- #\(.number) \(.title)"' .planner/roadmap-input.json
+            echo
+            echo "### Summary"
+            jq -r .summary "$RUNNER_TEMP/plan.json"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Record the run
+        if: always()
+        id: record
+        uses: $/.github/actions/record-run
+        with:
+          execution_file: ${{ steps.claude.outputs.execution_file }}
+          stage: planner-roadmap
+          model: ${{ inputs.model }}
+          auth: oauth
+          issue: roadmap
+
+      - name: Upload the report and the record
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: planner-roadmap-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ steps.record.outputs.record_path }}
+            .planner/roadmap-report.json
+          if-no-files-found: warn
+          retention-days: 90
