@@ -1,0 +1,128 @@
+name: triage
+
+on:
+  workflow_call:
+    inputs:
+      model:
+        type: string
+        required: true
+      priority_field_id:
+        type: string
+        required: true
+      owners:
+        description: Comma-separated logins, no spaces
+        type: string
+        required: true
+    secrets:
+      claude_code_oauth_token:
+        required: true
+
+jobs:
+  triage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: contains(format(',{0},', inputs.owners), format(',{0},', github.event.sender.login))
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Check out the caller repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Check out the shared prompts
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .ai-workflows
+          sparse-checkout: prompts
+          persist-credentials: false
+
+      - name: Record workflow identity
+        env:
+          WF_REPO: ${{ job.workflow_repository }}
+          WF_SHA: ${{ job.workflow_sha }}
+          WF_REF: ${{ job.workflow_ref }}
+          GH_WF_REF: ${{ github.workflow_ref }}
+        run: |
+          {
+            echo "### Workflow identity"
+            echo "- job.workflow_repository: \`$WF_REPO\`"
+            echo "- job.workflow_sha: \`$WF_SHA\`"
+            echo "- job.workflow_ref: \`$WF_REF\`"
+            echo "- github.workflow_ref: \`$GH_WF_REF\`"
+            echo "- prompt present: $(test -s .ai-workflows/prompts/triage.md && echo yes || echo no)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Classify
+        id: claude
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.claude_code_oauth_token }}
+          github_token: ${{ github.token }}
+          prompt: |
+            Repository: ${{ github.repository }}
+            Issue number: ${{ github.event.issue.number }}
+            Read .ai-workflows/prompts/triage.md and follow it.
+          claude_args: |
+            --model ${{ inputs.model }}
+            --allowedTools "Bash(gh issue view:*),Read"
+            --json-schema '{"type":"object","properties":{"type":{"type":"string","enum":["Task","Bug","Feature"]},"priority":{"type":"string","enum":["Urgent","High","Medium","Low"]},"rationale":{"type":"string"}},"required":["type","priority","rationale"]}'
+
+      - name: Apply the verdict
+        if: steps.claude.outputs.structured_output != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERDICT: ${{ steps.claude.outputs.structured_output }}
+          ISSUE: ${{ github.event.issue.number }}
+          FIELD_ID: ${{ inputs.priority_field_id }}
+        run: |
+          set -euo pipefail
+          type=$(jq -er .type <<<"$VERDICT")
+          priority=$(jq -er .priority <<<"$VERDICT")
+          jq -er .rationale <<<"$VERDICT" > "$RUNNER_TEMP/rationale.txt"
+          api="repos/$GITHUB_REPOSITORY/issues/$ISSUE"
+          gh api -X PATCH "$api" -f type="$type" --silent
+          jq -n --argjson id "$FIELD_ID" --arg v "$priority" \
+            '{issue_field_values:[{field_id:$id,value:$v}]}' \
+            | gh api -X POST "$api/issue-field-values" --input - --silent
+          got_type=$(gh api "$api" --jq '.type.name // ""')
+          got_prio=$(gh api "$api/issue-field-values" \
+            | jq -r --argjson id "$FIELD_ID" \
+              '[.[] | select(.issue_field_id == $id)][0].single_select_option.name // ""')
+          {
+            echo "### Verdict written"
+            echo "- type: wanted \`$type\`, read back \`$got_type\`"
+            echo "- priority: wanted \`$priority\`, read back \`$got_prio\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+          test "$got_type" = "$type"
+          test "$got_prio" = "$priority"
+          gh issue comment "$ISSUE" --body-file "$RUNNER_TEMP/rationale.txt"
+
+      - name: Record the run
+        if: always()
+        id: record
+        uses: becloud-dev/workflows/.github/actions/record-run@main
+        with:
+          execution_file: ${{ steps.claude.outputs.execution_file }}
+          stage: triage
+          model: ${{ inputs.model }}
+          auth: oauth
+          issue: ${{ github.event.issue.number }}
+
+      - name: Upload the record
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: run-record-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ steps.record.outputs.record_path }}
+          retention-days: 90
+
+      - name: Remove the start label
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ github.event.issue.number }}
+        run: gh issue edit "$ISSUE" --remove-label triage

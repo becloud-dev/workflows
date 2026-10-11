@@ -1,0 +1,58 @@
+name: record-run
+description: Write a monitoring record from a Claude Code Action execution file
+inputs:
+  execution_file:
+    required: false
+    default: ""
+  stage:
+    required: true
+  model:
+    required: true
+  auth:
+    required: true
+  issue:
+    required: true
+outputs:
+  record_path:
+    value: ${{ steps.build.outputs.record_path }}
+runs:
+  using: composite
+  steps:
+    - id: build
+      shell: bash
+      env:
+        EXEC: ${{ inputs.execution_file }}
+        STAGE: ${{ inputs.stage }}
+        MODEL: ${{ inputs.model }}
+        AUTH: ${{ inputs.auth }}
+        ISSUE: ${{ inputs.issue }}
+        WORKFLOW: ${{ github.workflow }}
+      run: |
+        set -euo pipefail
+        out="$RUNNER_TEMP/run-record.json"
+        src="$EXEC"
+        if [ -z "$src" ] || [ ! -s "$src" ]; then
+          src="$RUNNER_TEMP/empty-execution.json"
+          echo '[{}]' > "$src"
+        fi
+        jq -n --slurpfile f "$src" \
+          --arg ts "$(date -u +%FT%TZ)" --arg repo "$GITHUB_REPOSITORY" \
+          --arg workflow "$WORKFLOW" --arg stage "$STAGE" --arg issue "$ISSUE" \
+          --arg run_id "$GITHUB_RUN_ID" --arg attempt "$GITHUB_RUN_ATTEMPT" \
+          --arg model "$MODEL" --arg auth "$AUTH" '
+          ($f[0] | last // {}) as $r |
+          { ts: $ts, repo: $repo, workflow: $workflow, stage: $stage,
+            issue_or_pr: $issue, run_id: $run_id, run_attempt: $attempt,
+            model: $model, auth: $auth,
+            is_error: (if $r | has("is_error") then $r.is_error else null end), num_turns: ($r.num_turns // 0),
+            duration_ms: ($r.duration_ms // 0), duration_api_ms: ($r.duration_api_ms // 0),
+            total_cost_usd: ($r.total_cost_usd // 0),
+            permission_denials_count: (($r.permission_denials // []) | length),
+            modelUsage: ($r.modelUsage // {}) }' > "$out"
+        {
+          echo "### Run record"
+          echo '```json'
+          cat "$out"
+          echo '```'
+        } >> "$GITHUB_STEP_SUMMARY"
+        echo "record_path=$out" >> "$GITHUB_OUTPUT"
