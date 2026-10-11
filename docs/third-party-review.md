@@ -770,3 +770,38 @@ page); the meaning of `additional-permissions: true`; whether an approval by `GI
 counts toward a code-owner requirement; whether native auto-merge works on a Free public repo;
 `vars` inside a called workflow (the contexts page states nothing); how a called workflow locates
 its own repository for a second checkout; Haiku 5.5 behaviour as executor (no measured run).
+
+### Stage design, round 4 inputs, read 2026-10-11
+
+Sources: `bentoluizv/patagonia-trip` through `gh api` (`labels`, `CONTRIBUTING.md`,
+`pull_request_template.md`, 6 most recent issues); raw `github/docs`
+(`reference/workflows-and-actions/contexts.md`, `how-tos/reuse-automations/reuse-workflows.md`,
+`managing-issue-fields-in-your-organization.md`, `data/reusables/actions/workflow-ref-description.md`,
+`src/github-apps/data/fpt-2026-03-10/server-to-server-permissions.json`).
+
+| Topic | Finding |
+|---|---|
+| Called workflow finds its own repository | `job.workflow_repository` is the `owner/repo` of the repository containing the workflow file that defines the current job; `job.workflow_sha` is that file's commit SHA; `job.workflow_ref` "refers to the reusable workflow file" for a job defined in a reusable workflow. The contexts page gives an example reusable workflow that passes the first and second to `actions/checkout` (`repository`, `ref`) to read files co-located with the workflow. Marked unavailable only on GitHub Enterprise Server |
+| Context availability | `job` is available in `jobs.<job_id>.steps.with` and `steps.run`. `vars` is available in `jobs.<job_id>.with.<with_id>` (the caller), in steps and in `jobs.<job_id>.if`. `github.workflow_ref` is "the ref path to the workflow"; the page does not say caller or called, and `job.workflow_ref` is described as equal to it for jobs defined directly in a workflow file |
+| `vars` in a called workflow | Neither the reusable-workflows page nor the contexts page says whose variables a called workflow reads |
+| Patagonia labels | 14 labels: GitHub defaults, `autorelease: pending` / `autorelease: tagged`, `claude` ("Run the Claude issue reviewer", removed when the review ends) and `release-blocker`. No priority, routing or stage labels. The 6 most recent issues have no issue type |
+| Patagonia plan and checks | The plan is local Plan Mode, "isn't copied anywhere": the issue keeps the `Decisão:` and the PR body says what was done. No plan file. Checks are `npm run check` and `npm run e2e` |
+| Issue field options | Up to 25 fields per org; default fields are editable (name, description, options) or deletable; single-select options carry a name, description and colour; a field is pinned to issue types and "Issues without a type" can be selected; an unpinned field with no value stays hidden. The page states no option-count limit |
+| Milestone permissions | `list/get/create/update/delete-a-milestone` sit under the `issues` key (read, write), server-to-server true |
+
+Implications (inference):
+
+- A called workflow reads its prompt files with a second checkout at `job.workflow_repository` and
+  `job.workflow_sha`; prompts and workflow file are then always the same commit, and the caller's
+  `uses: ...@<ref>` picks both.
+- Consumer values travel as `with:` inputs filled from `vars` in the caller, a documented path that
+  does not depend on `vars` inside the called workflow.
+- The Priority field needs pinning to the issue types in use and to "Issues without a type",
+  otherwise it is hidden on typeless issues.
+- Milestones and labels need the same `issues: write` as issue fields; no extra App permission for 2b.
+- Patagonia has no routing labels, planner or plan file; items 1-3 are design, not a port.
+
+Corrected: the last paragraph of "Stage design inputs" lists "how a called workflow locates its own
+repository" as unverified; it is documented above. Still unverified: `job.workflow_sha` populated in
+a called workflow on a Free public repo (docs state it; live probe postponed); org issue fields
+present (needs the account); option-count limit of a single-select.
