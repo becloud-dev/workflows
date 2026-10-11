@@ -907,3 +907,32 @@ Implications (inference):
 Unverified: `GITHUB_TOKEN` writing field values (live item 2); whether `issue_fields` can be
 requested in a workflow `permissions:` block; what a pending type suggestion looks like and how it
 is accepted.
+
+### Live results: org issue fields (2026-10-11)
+
+Source: two screenshots from the user, taken 14:49 and 14:50, and two terminal outputs pasted by
+the user (`gh api` run with the user's own login, not `GITHUB_TOKEN`).
+
+| Check | Result |
+|---|---|
+| Org Settings > Planning > Issue fields (`becloud-dev`) | 4 fields listed: Priority, Start date, Target date, Effort |
+| `gh api orgs/becloud-dev/issue-fields --jq '.[] \| [.id,.name,.data_type]'` | Priority `48149712` single_select; Start date `48149713` date; Target date `48149714` date; Effort `48149715` single_select |
+| Priority field object, same endpoint | 4 options, GitHub defaults: `84291383` Urgent (`priority` 1, pink), `84291384` High (2, red), `84291385` Medium (3, yellow), `84291386` Low (4, green); every option `description` null; `visibility` `organization_members_only`; `created_at` 2026-10-08. Returned in name order |
+
+Implications (inference):
+
+- `PRIORITY_FIELD_ID` is `48149712`. The list endpoint answers on a Free org, so issue fields
+  are present there.
+- The user keeps the four default options; no `P1` to `P5`. Values are written by option name,
+  so the verdict schema and the prompt use Urgent, High, Medium, Low as returned.
+- Rank is in each option's `priority` key (1 to 4); response order is alphabetical.
+- The API object carries no pin data; pins to issue types are checked in the UI.
+- The criticality description per option lives only in the triage prompt, because the field's
+  descriptions are null.
+
+Corrected: "Stage design, round 4 inputs" lists "org issue fields present (needs the account)"
+as unverified; the field list above shows them present. The "Live confirmations before triage"
+table, item 1, asks for editing to P1-P5; superseded by Round 5 item 9.
+
+Still open: pinning to Task, Bug, Feature and "Issues without a type" (UI); option-count limit
+(not tested, no option added); meaning of `organization_members_only` on a public repo.
