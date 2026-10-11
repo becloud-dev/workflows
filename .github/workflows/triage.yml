@@ -156,8 +156,13 @@ jobs:
                 || { ok=0; break; }
               created="$created ${url##*/}"
             done
-            got_subs=$(gh api "$api" --jq '.sub_issues_summary.total')
-            echo "- split: $n_children wanted, read back sub_issues_summary.total $got_subs" \
+            got_subs=""
+            for attempt in 1 2 3 4 5; do
+              got_subs=$(gh api "$api" --jq '.sub_issues_summary.total')
+              [ "$got_subs" = "$n_children" ] && break
+              sleep 2
+            done
+            echo "- split: $n_children wanted, read back sub_issues_summary.total $got_subs after $attempt read(s)" \
               >> "$GITHUB_STEP_SUMMARY"
             test "$got_subs" = "$n_children" || ok=0
           fi
