@@ -40,7 +40,8 @@ Then, for `triaged` only, check the format against the repository's issue templa
 - List `.github/ISSUE_TEMPLATE` with `ls .github/ISSUE_TEMPLATE` and `Read` the template that
   the issue was written against. No directory, or no template clearly matching: skip this step
   and return neither `body` nor `format_change`.
-- A `.md` template: the body follows its headings. A `.yml` form: the body is one
+- A `.md` template: the body follows its headings, each written exactly as the template writes
+  it, including its level (`##` or `###`). A `.yml` form: the body is one
   `### <label>` heading per field (`attributes.label`, in form order, `markdown` elements
   skipped) followed by the value.
 - If the body already follows the template, return neither field. Otherwise return `body`, the
