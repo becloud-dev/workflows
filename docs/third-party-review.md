@@ -912,6 +912,10 @@ Unverified: `GITHUB_TOKEN` writing field values (live item 2); whether `issue_fi
 requested in a workflow `permissions:` block; what a pending type suggestion looks like and how it
 is accepted.
 
+Corrected 2026-10-11: `GITHUB_TOKEN` wrote the field value and the issue type in the first triage
+run (see "Live results: first triage run"). `issue_fields` as a `permissions:` key and the
+pending-suggestion behaviour stay unverified.
+
 ### Live results: org issue fields (2026-10-11)
 
 Source: two screenshots from the user, taken 14:49 and 14:50, and two terminal outputs pasted by
@@ -962,3 +966,46 @@ Implications (inference):
   (flag from the `gh` help; the effect on `read:org` is untested).
 
 Still open: A3, A4, A6b, A7 (labels, issue types, Actions setting); item 14 by run.
+
+Corrected 2026-10-11: A4, A6b and A7 are done and item 14 held by outcome; see "Live results:
+first triage run". A3 stays open.
+
+### Live results: first triage run (2026-10-11)
+
+Source: `gh` read-only calls with the user's login on `becloud-dev/triage-sandbox` and
+`becloud-dev/workflows`; run `38164369843` (event `issues`, `labeled`, started 18:34:16Z), issue
+#1; the run-record artifact `run-record-38164369843-1`. The job summary text is not exposed by
+the API and was not read.
+
+| Step | Result |
+|---|---|
+| A6b | Variables `OWNERS` (`bentoluizv`) and `PRIORITY_FIELD_ID` (`48149712`) set by the user; read back |
+| A7a | Labels `triage`, `needs-info` created by the user; read back with descriptions |
+| A7b | `GET /orgs/becloud-dev/issue-types`: Task `897472419`, Bug `897472420`, Feature `897472421`, all `is_enabled: true` |
+| A7c | `GET .../actions/permissions`: `enabled: true`, `allowed_actions: all`, `sha_pinning_required: false` |
+| A4 | `gh repo create becloud-dev/workflows --public` printed the URL; main pushed; `gh api .../commits` head equals the local `HEAD` |
+| R1 | Caller workflow committed as the first commit of `triage-sandbox` (`0929a1b`) and pushed; `gh workflow list` shows `triage`, active |
+| R2-R4 | Issue #1 created, label `triage` applied: run started, 9 steps and post steps `success`, job 35 s |
+| Issue after run | Type `Bug`; field `48149712` value `Urgent` (`GET issue-field-values`); one comment with a two-sentence rationale citing the issue text; label `triage` removed |
+| Run record | `is_error` false, `num_turns` 4, `duration_ms` 4972, `permission_denials_count` 0, model `claude-haiku-5-5`, `auth` oauth, `total_cost_usd` 0.00467535; `modelUsage` has one model: 1220 input, 699 output, 36945 cache read, 19172 cache creation tokens, `provider` firstParty, `costBasis` list |
+| Annotation | `ubuntu-latest` migrates to Ubuntu 26 on 2026-10-19 (notice only) |
+
+Interpretation (inference):
+
+- `GITHUB_TOKEN` with `issues: write` wrote the issue type (`PATCH ... -f type=<name>`) and a
+  Priority option name (`POST issue-field-values`, body `{field_id, value}`) in a called
+  workflow, and the read-back step, which fails the job on a mismatch, passed. Live item 2 is
+  confirmed.
+- The prompt checkout, the owner gate, `vars` through `with:`, `--model claude-haiku-5-5`, the
+  `Bash(gh ...)` allowlist, `structured_output`, the composite action at `@main` and the
+  artifact upload each ran without error; items 4-9 are confirmed by outcome, not by reading the
+  value of `job.workflow_sha` (summary not read).
+- The Classify step ran with the organization secret in a public repository on Free; item 14
+  holds by outcome.
+- `total_cost_usd` on OAuth is populated; `costBasis: list` suggests a list-price figure, not a
+  charge. What the subscription is charged is unverified.
+- One triage costs about half a cent at list price, mostly cache tokens.
+
+Unverified or not exercised: concurrency (a second `triage` during a run, Round 5 item 13);
+`needs-info`, the format fix and the split; the haiku verdict quality on real issues; A3 (the
+Anthropic reply); the "Workflow identity" block of the job summary.
