@@ -92,6 +92,8 @@ Round 1 (recommended answer first, none confirmed):
 
 1. Repo shape: `becloud-dev/workflows` with reusable workflows, prompts and label/template
    definitions; thin caller workflows per project; templates in the org `.github` repo.
+   Tested 2026-10-11: a private `.github` repo supplies no default templates (section 5, #16);
+   templates are synced per repo.
 2. Engine: GitHub Actions with `claude-code-action`, org-level secrets.
 3. State: labels + milestones + Projects, no external store.
 4. Planner trigger: backlog on every triage completion; roadmap on demand; no cron.
@@ -341,3 +343,53 @@ Unverified: whether `vars` resolve inside a called workflow without being passed
 dispatching a workflow with `GITHUB_TOKEN` needs `actions: write`; that `fpt` in docs versioning
 means Free, Pro and Team (docs convention, not stated in the files read); the `with` context
 contradiction above, untested.
+
+### Org default templates (#16), read and tested 2026-10-11
+
+Sources: raw `github/docs` markdown (`creating-a-default-community-health-file.md`,
+`about-issue-and-pull-request-templates.md`, `configuring-issue-templates-for-your-repository.md`,
+`creating-a-pull-request-template-for-your-repository.md`, `reusing-workflow-configurations.md`,
+`create-workflow-templates.md`, reusables `default-issue-templates` and `valid-community-issues`,
+feature file `actions-nga.yml`), its commit history, and a live test in the `becloud-dev` org.
+The visibility statements were cross-checked on the rendered docs.github.com pages.
+
+| Topic | Finding |
+|---|---|
+| Host repo | Default files live in a repo named `.github`. It "must be public"; "A repository for default files cannot be private." Raw and rendered text agree. No reason or mechanism is stated |
+| History | The passage was edited deliberately in 2025-11, 2026-03 and 2026-08 (public or internal; templates need public on GHEC; EMU orgs use internal). Earlier wording: "Private `.github` repositories are not supported" |
+| Reach | Defaults are used for any repo of the owner "regardless of the destination repository's visibility" that has no file of its own of that type. `github/docs` PR #6941 (2021) changed the docs to match behavior: private repos do inherit |
+| Issue templates | Stored in `.github/ISSUE_TEMPLATE` with `config.yml`. A repo that defines valid issue templates or template configuration in its own folder gets none of the default folder: override is per folder, not per file |
+| PR templates | Precedence per file type: repo `.github` folder, repo root, `docs`, then the `.github` repo. A `PULL_REQUEST_TEMPLATE/` subdirectory holds several templates, chosen by the `template` query parameter |
+| Labels | "If an issue template sets a label, that label must be created in your `.github` repository and any repositories where the template will be used" |
+| Not shareable | A default license file |
+| Starter workflows | `workflow-templates/` in `.github`, each with a `<name>.properties.json`; `$default-branch` placeholder. Under the docs flag `actions-nga` (`fpt`, `ghec`) the repo need not be public: a private `.github` serves only private repos, and users or teams need Read access to it. Not tested |
+
+Live test (Free org, 2026-10-11): private `becloud-dev/.github` holding
+`.github/ISSUE_TEMPLATE/probe.yml` (an issue form named "Probe form"), and a private target
+`becloud-dev/tmp-template-probe` with no templates of its own.
+
+| `.github` visibility | `/issues/new/choose` on the target |
+|---|---|
+| private | plain blank issue form, no chooser (screenshot 12:24:04, -03:00) |
+| public | chooser with "Probe form" and "Blank issue" (screenshot 12:25:05, -03:00) |
+
+- The GraphQL field `Repository.issueTemplates` returned `[]` in every state, including with
+  the `.github` repo public and the chooser showing the form. The field does not report
+  inherited defaults and is not usable as a check; only the UI was.
+- One run, one org, one plan, one file type (issue form). The form appeared within about a
+  minute of the visibility change, so propagation lag does not explain the private result.
+
+Implications (inference):
+
+- A private `.github` repo in a Free org supplies no default issue forms, even to private repos.
+  The all-private decision therefore rules out the org `.github` repo for templates.
+- Templates and labels reach each project repo by a sync step from `workflows`, in the same step
+  as the #10 label sync. A repo with any file of its own in `.github/ISSUE_TEMPLATE` shows only
+  its own.
+- Starter workflows from a private `.github` repo are untested; the caller files can be copied
+  by the same sync step instead.
+
+Unverified: whether PR templates and `config.yml` behave like issue forms (same folder rule,
+not tested); whether `actions-nga` starter workflows from a private `.github` work on a Free
+org (`fpt` is the docs convention for Free, Pro and Team, not stated in the files read); what
+happens when a template names a label that does not exist in the repo (#17).
