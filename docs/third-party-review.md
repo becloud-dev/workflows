@@ -534,12 +534,60 @@ Implications (inference, for public repositories):
 
 - `required` is enforced in the form. Issues created through the API or `gh` skip the form, so
   the triage workflow still checks the body.
-- Triage reads a markdown body; form labels should stay stable because the body layout depends
-  on them (layout not shown in the docs read).
+- Triage reads a markdown body in which each field is a `### <label>` heading followed by the
+  value (tested for `textarea`); form labels stay stable because they become the headings.
 - Labels named by a form must exist in each repo (sync step) or they are dropped without error.
 - Public preview: forms are pinned in `workflows` and re-checked at each release.
 
-Unverified: that `required` blocks submission in a public repo of a Free org (documented, not
-tested); what `type` does when the type is missing; the rendered body layout of a submitted
-form; the forbidden-word list for labels; any limit on body size or element count (none stated
-in the files read).
+Live test (public repo `becloud-dev/tmp-template-probe`, Free org, 2026-10-11): a form with
+`required: true` on a textarea, `labels: ["no-such-label"]` and `type: NoSuchType`.
+
+| Case | Result |
+|---|---|
+| Submit with the required field empty | Blocked in the form: "Field can not be empty" under the field; no issue created |
+| Submit with `hello` | Issue #1 created; body exactly `### What\n\nhello` (field label as an H3 heading, blank line, value) |
+| Missing label `no-such-label` | Not applied and not created (the repo has only GitHub's default labels), no error shown |
+| Missing type `NoSuchType` | Not applied (`type` is `null`), no error shown |
+
+One run, one field type (`textarea`). A new repo in the org starts with ten default labels:
+`accessibility, bug, documentation, duplicate, enhancement, good first issue, help wanted,
+invalid, question, wontfix`.
+
+Unverified: body layout of `input`, `dropdown`, `checkboxes` and `upload`, and of an empty
+optional field; behavior of `type` and `labels` for an issue created through the API instead of
+the form; the forbidden-word list for labels; any limit on body size or element count (none
+stated in the files read).
+
+### `gh` CLI flags (#20), read 2026-10-11
+
+Sources: raw `cli/cli` source at release v2.102.0 (2026-09-30), the same version as the local
+`gh`: `pkg/cmd/issue/create/create.go`, `edit/edit.go`, `pkg/cmd/issue/shared/lookup.go`,
+`api/queries_issue.go`, `pkg/cmd/pr/create/create.go`, `pkg/cmd/root/help_topic.go`; release
+notes of v2.94.0.
+
+| Topic | Finding |
+|---|---|
+| `gh issue create` | `--title`, `--body`, `--body-file`, `--editor`, `--web`, `--assignee`, `--label`, `--project` (by title), `--milestone`, `--template`, `--recover`, `--type` (name), `--parent` (number or URL), `--blocked-by`, `--blocking` |
+| Since | `--type`, `--parent` and relationships: v2.94.0 (2026-06-10). Release notes: "available on GitHub.com and GHES 3.17+; relationships require GHES 3.19+" |
+| `gh issue edit` | `--add-label`/`--remove-label`, `--add-assignee`/`--remove-assignee`, `--add-project`/`--remove-project`, `--milestone`/`--remove-milestone`, `--type`/`--remove-type`, `--parent`/`--remove-parent`, `--add-sub-issue`/`--remove-sub-issue`, `--add-blocked-by`/`--remove-blocked-by`, `--add-blocking`/`--remove-blocking` |
+| Order | `create` calls `IssueCreate`, then applies type, parent and relationships as separate mutations (`DeferredUpdateIssue`), run concurrently |
+| Failure mode | A follow-up error (for example `type "X" not found; available types: …`) returns before the issue URL is printed, after the issue exists |
+| Type match | Case-insensitive by name against the repository's available types |
+| `gh pr create` | `--title`, `--body`, `--body-file`, `--base`, `--head`, `--fill`, `--fill-first`, `--fill-verbose`, `--draft`, `--reviewer`, `--assignee`, `--label`, `--project`, `--milestone`, `--template` (file), `--dry-run` ("May still push git changes"), `--no-maintainer-edit`, `--recover`, `--editor`, `--web`. No `--type` or `--parent` |
+| Auth, prompts | `GH_TOKEN`, `GITHUB_TOKEN` (in that order of precedence); `GH_PROMPT_DISABLED` disables interactive prompts |
+| Stability | No per-flag stability marker found in the files read; every flag above exists in the current release |
+
+Implications (inference):
+
+- An automated create is two steps in effect: check the type name first (or create, then
+  `gh issue edit --type`), and carry an idempotency marker in the title or body so a retry
+  searches before creating.
+- Sub-issues still need the same repository owner (#7); Projects v2 writes still need an App
+  token (#8).
+- `--parent` and `--type` on creation are convenience only; setting them with `gh issue edit`
+  is the same mutation and can be retried on its own.
+
+Unverified: behavior of `--type` when the organization has no types; prompts without a TTY when
+`--title` or `--body` is missing (the logic is at `create.go:135`, not run); `--project` with an
+App token; the repository setting "Allow GitHub Actions to create and approve pull requests"
+for `gh pr create` under `GITHUB_TOKEN` (not read).
