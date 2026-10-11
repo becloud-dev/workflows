@@ -113,3 +113,40 @@ Diagram ambiguities to confirm:
 
 - DEV (haiku) executes the plan: intended, or should it be sonnet?
 - After the "meets criteria?" check the arrow goes straight to MERGE with no human box.
+
+## 5. Findings
+
+### Hard blockers (#4, #5, #8, #11-#14), read 2026-10-11
+
+Read through a page summarizer, so wording is as reported, not raw.
+
+| # | Finding | Gap left open |
+|---|---|---|
+| 4 | `GITHUB_TOKEN` scopes are set with `permissions`. The docs say "If you need a token that requires permissions that aren't available in the `GITHUB_TOKEN`, create a GitHub App." | Scope list, cross-repo access, Projects v2 and whether token-created events trigger workflows are not on the page. Read the GITHUB_TOKEN concept page and the workflow syntax permissions section |
+| 5 | The app-token action scopes to the current repo with no `owner`, the installation with `owner`, a list with `owner` + `repositories`. Token expires after 1 hour and is revoked in the post step, so it cannot cross jobs | `projects` / `organization-projects` permission keys are not documented on its page |
+| 8 | Projects v2 updates are GraphQL only. Token is a classic PAT (`project` scope) or a GitHub App installation token. Adding and updating an item are two mutations | Fine-grained PATs and `GITHUB_TOKEN` are not mentioned. Read "Automating Projects using Actions" |
+| 11 | Repo rulesets are described for Team and Enterprise customers. Org-level rulesets need Enterprise | Free not stated on the pages fetched; see plan matrix below |
+| 12 | "Require review from Code Owners" is a branch-protection setting. Owners need write access | No plan or visibility stated on that page |
+| 13 | Environment required reviewers and wait timers: "only available for public repositories" on Free, Pro and Team | Free private not addressed directly |
+| 14 | Team lists protected branches, required reviewers and code owners for private repos. Free: 2,000 Actions minutes per month | Rulesets, environments, Projects not addressed per plan |
+
+Plan matrix for rulesets (from search, second-hand; the exact docs page was not read raw):
+"Rulesets are available in public repositories with GitHub Free and GitHub Free for
+organizations, and in public and private repositories with GitHub Pro, GitHub Team, and GitHub
+Enterprise Cloud." On a private repo in a Free organization, rulesets can be created but are not
+enforced until the organization is upgraded to Team. Pro is a personal-account plan; that it
+does not extend to organization-owned repos is an inference.
+
+### Decision: option C (2026-10-11)
+
+Project repos are private on the Free plan. GitHub will not enforce required reviews, CODEOWNERS,
+rulesets or environment approvals there, so every human gate is enforced by workflow logic.
+
+Consequences to design for:
+
+- A workflow can fail a check, comment, or remove a label. It cannot stop the merge button.
+  Gates are therefore visible and auditable, not preventive.
+- Gate checks must read state through the API (reviews, label events, actor permission), which is
+  unverified on private Free repos.
+- A GitHub App token is still the only documented route to Projects v2 writes.
+- Upgrading to Team later turns the same gates into native ones without changing the stages.
