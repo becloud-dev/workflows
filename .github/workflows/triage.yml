@@ -17,14 +17,17 @@ on:
       claude_code_oauth_token:
         required: true
 
+permissions: {}
+
 jobs:
   triage:
+    name: Triage
     runs-on: ubuntu-latest
     timeout-minutes: 10
     if: contains(format(',{0},', inputs.owners), format(',{0},', github.event.sender.login))
     permissions:
       contents: read
-      issues: write
+      issues: write # comment, label, set type and Priority, fix the body, create sub-issues
     steps:
       - name: Check out the caller repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
