@@ -1388,3 +1388,27 @@ drops Docker, so a later bump changes the install path.
 Unverified: whether `--format=github` keeps exit codes 11 and above (the docs list only
 `--format=sarif` and `--no-exit-codes` as removing them); that code scanning is enabled on the
 repository; Docker and `ghcr.io` access on `ubuntu-latest` (not read; a live PR run tests it).
+
+### Decision: stage 1 closed (user, 2026-10-11)
+
+Stage 1 (triage) is closed on the sandbox at `workflows` `fe530b9`. Scope as designed in
+Round 5 items 1 to 9, all implemented and observed live (runs listed in the "Live results"
+sections above, plus `38175350506` and `38175941033` for the pins, `$/` record-run and default
+permissions). Tests stay on `becloud-dev/triage-sandbox`; the full flow runs on a real project
+later. Work continues on the next stages of section 1.
+
+Gaps carried forward (recorded, not closed):
+
+| Gap | Why it matters | What would close it |
+|---|---|---|
+| Owner gate rejecting a non-owner never exercised live; only the `OWNERS` variable was read back (A6b) | security gate on who can start a run | a label applied by a second GitHub account or an allowed bot, then read the run (`if:` false, no job) |
+| Partial failure of the child-creation loop | a split could leave some children and no read-back | force one `gh issue create` to fail in the sandbox |
+| Three events in a row on one issue | concurrency and guard under bursts | apply, remove and re-apply `triage` quickly; read the runs |
+| Issue form (`.yml`) or several templates | the format fix and template headings were tried on one markdown template only | a `.yml` form and a second template in the sandbox |
+| Quality on real issues | verdicts were checked only on issues written for the test | run on a real project later, as decided |
+| `suggest` (type) and Projects v2 | out of stage 1 by decision (Round 5 item 4) | needed only if the decision changes |
+| A3: Anthropic reply on subscription OAuth for a public project | decides whether this authentication stays | the user reports the reply; then `gh auth refresh --remove-scopes admin:org`, whose effect on `read:org` is untested |
+| Cause of the one permission denial in run `38172402379`; whether the poll needed more than one read; the job summary text; what OAuth is charged (`costBasis: list`); `gh` on the Ubuntu 26 runner (migration 2026-10-19) | unread facts, none blocks the flow | read when the source is reachable |
+
+Not part of stage 1: issue #1 and PR #2 (zizmor in CI) are parked; the check ran green on the
+branch (run `38176419903`) and nothing is merged.
