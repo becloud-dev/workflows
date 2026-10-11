@@ -150,3 +150,22 @@ Consequences to design for:
   unverified on private Free repos.
 - A GitHub App token is still the only documented route to Projects v2 writes.
 - Upgrading to Team later turns the same gates into native ones without changing the stages.
+
+Confirmed 2026-10-11 after pricing was checked: stay on Free, all repositories private, the code
+owner is the control, enforcement through workflow logic. Team is deferred until stricter
+enforcement is needed. Price seen on the org upgrade screen: Team is $4 per user per month,
+$48 per seat per year (same total either way). The billing-cycle docs did not state
+cancellation or refund terms; that is unverified.
+
+### Shared workflows repo, all private (checked 2026-10-11)
+
+- A private repository can share its actions and reusable workflows with other private repos of
+  the same organization through Settings > Actions > General > Access > "Accessible from
+  repositories in the organization". Public repos cannot use this access. The docs state no plan
+  requirement for the setting. Source: "Managing GitHub Actions settings for a repository".
+- Cross-repo call syntax: `{owner}/{repo}/.github/workflows/{filename}@{ref}`.
+- Nesting: at most ten levels of workflows, no loops, permissions can only be kept or reduced down
+  the chain, and secrets pass only to the directly called workflow (`secrets: inherit` for the
+  same organization).
+- Not yet verified on a Free org: that the setting is actually selectable there (settings are
+  visible only once the repo exists).
