@@ -113,10 +113,34 @@ Round 2:
 4. Tokens: GitHub App on the org for cross-repo and Projects writes.
 5. Verification: check the unverified items against current docs before designing on them.
 
-Diagram ambiguities to confirm:
+Diagram ambiguities: both settled in Round 3 below.
 
-- DEV (haiku) executes the plan: intended, or should it be sonnet?
-- After the "meets criteria?" check the arrow goes straight to MERGE with no human box.
+Round 3 (user, 2026-10-11; recommended answers accepted by "Proceed"):
+
+1. Engine: GitHub Actions with `claude-code-action@v1`, one reusable workflow per stage,
+   prompts as files in the shared repo, org-level secret.
+2. State: issue types for the kind of work; an org-level issue field Priority with options
+   P1 to P5; labels only for routing (`RELEASE`, `UX/UI`, `READY TO LIVE`, `release-blocker`);
+   one milestone per release; Projects v2 not written by automation. Fallback when issue fields
+   are absent on the Free org: labels `P1` to `P5`. Pending the org settings check.
+3. Start signal: an owner-applied label starts the issue stages (sender checked against the
+   owners variable, label removed at the end); an owner comment starts the PR stages.
+4. Planner: 2a and 2b run only by `workflow_dispatch` from the owner; no cron, no chain after
+   triage. Backlog order is a saved query over Priority. Replaces Round 1 item 4.
+5. Kept from patagonia-trip: Conventional Commits and release-please, `pr-title` check, "Bug
+   class" section, `Decision:` options gate for cross-layer issues, plan-before-code triggers,
+   `release-blocker` gating, Blocking/Suggestion taxonomy with a 5-nit cap, release range via
+   `git describe`, per-issue `concurrency`, `timeout-minutes`, tight tool allowlists, sub-issues
+   via `--parent`. Dropped: D1 backup, migrations and deploy, biome, vitest, playwright, pt-BR,
+   stack-specific review rules.
+6. DEV executes with haiku, model a caller input with the full ID pinned; the monitoring record
+   compares it against sonnet on the same plan.
+7. The PR is opened by a workflow step with the App token after the Claude step; Claude only
+   commits to a branch.
+8. Check loop: sonnet check, at most 2 haiku re-executions, then stop with a comment for the
+   owner.
+9. The AI does not merge: the check posts its result and the owner approves and merges.
+   Native auto-merge enabled by the bot stays an unverified alternative.
 
 ## 5. Findings
 
