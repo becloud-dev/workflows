@@ -1812,3 +1812,59 @@ Re-run after `8f6d4b3` (inference, one run): the UI comment's `Gaps` now states 
 assumed to be a list with one button per row and that a single invoice would move the button to the
 page header's actions area. The layout is unchanged. Nine gaps in total; unverified whether that
 volume is useful or noisy across other issues.
+
+### Stage 4a: development plan (2026-10-11)
+
+Decisions (user, Plan Mode round): two reusable workflows, plan first (`dev-plan.yml`, then
+`dev-execute.yml`); the owner's comment `/approve` starts the execution; `GITHUB_TOKEN` opens the PR
+now and a GitHub App comes in a later round; a loop that still fails after 2 re-executions opens a
+draft PR plus a findings comment. Defaults taken from the plan and not asked: the gate refuses a
+`RELEASE` while `UX/UI` is on the issue; the plan reads the latest UX and UI comments as they are
+at run time.
+
+Changes: `workflows` `333d034` (`prompts/dev-plan.md`), `9ef164d` (`dev-plan.yml`), `2acb3ca`
+(`record-run` keeps `permission_denials` with `tool_name` and `tool_input` cut to 300 characters);
+`triage-sandbox` `750a808` (caller); label `RELEASE` created on the sandbox. All pushed.
+
+Source read: `anthropics/claude-code-action` at `1d6de8c` (raw `src/modes/agent/index.ts`,
+`src/github/operations/git-config.ts`, `docs/faq.md`, `docs/capabilities-and-limitations.md`) and
+the Agent SDK TypeScript reference (`SDKPermissionDenial`). In agent mode the action checks that
+the actor is human, replaces the checkout credential with its own token and sets a git user; it
+creates no branch and no PR.
+
+Fixture check on jq 1.7.1 (SHA-256 verified; real `run:` blocks, stub `gh`): gate output for a
+plain issue, a Project and an issue with `UX/UI`; hold comment; planned post with and without
+risks; planned with one step, no `risks` field, or no files fails; `needs_info` posts the
+questions, with 0 questions fails. `record-run` with 0, 1 and 2 denials, a 500-character input
+and a missing file. zizmor 1.30.1 offline, auditor persona: no findings on `dev-plan.yml` and
+`record-run`.
+
+Sandbox runs on #13 (`gh api` read-back):
+
+| Case | Run | Result |
+|---|---|---|
+| a. `RELEASE` added while `UX/UI` is on | `38185526301` | hold comment `<!-- dev-plan-hold -->`; plan, record and upload steps skipped |
+| b. `UX/UI` removed, `RELEASE` re-added | `38185565419` | `<!-- dev-plan -->` comment; sonnet-5-5, 5 turns, 0.127 USD, 19 s; `permission_denials_count` 1 |
+| c. same, after `2acb3ca` | `38185834989` | success; 4 turns, 0.054 USD; `permission_denials_count` 0, list empty |
+
+Inference: the mechanics hold on the runner (second checkout from `job.workflow_repository`, the
+gate, the hold, the marker comment). In case b the plan cites the UX and UI comments in its
+acceptance criteria, takes the tokens from the design system, and lists the list-or-single-item
+assumption under Risks, so the stage 3 fix carries over. #13 has no application code, so the plan
+invents a greenfield Node app (9 files, a hand-built PDF); that is a fixture limit, not a plan
+defect, and slice 4b needs a small issue in a repository with code. One spec item,
+"download click does not navigate away", cannot be checked by the stack the plan chose (no
+browser); inferred from reading the plan, not run.
+
+Gaps (recorded, not closed):
+
+| Gap | Why it matters | What would close it |
+|---|---|---|
+| Denied tool call in case b not identified | the log hides tool output and the first record kept only the count | the next occurrence, now named in the record; a prompt line only if it repeats |
+| `permission_denials` shape on a live denial | fixture follows the SDK docs; the live array was only seen empty | one run with a denial |
+| Plan items not testable on the chosen stack | the executor would write a test that cannot pass | a plan-prompt rule, decided with the first 4b run |
+| Plan comment edited by a non-owner | the execution reads the comment as it is | a decision on checking the comment's last editor |
+| Re-run duplicates plan comments | the latest `<!-- dev-plan -->` is current, older ones stay | the recorded stage 3 decision on edit in place |
+| Hold when `RELEASE` is added before `UX/UI` is removed | the owner must re-add `RELEASE`; order is by design, not exercised in a mixed event order | stays as documented behaviour |
+| `ux-ui.yml:160` zizmor `template-injection` (info, low confidence) | pre-existing; `record_path` is a runner temp path | passing it through `env:`, its own change |
+| Gate `UX/UI` to `RELEASE` with a real UI change end to end | exercised on #13 only as a plan | slice 4b on a UI issue, later |
