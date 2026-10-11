@@ -1711,3 +1711,48 @@ Gaps carried forward (recorded, not closed):
 Issue type `Project` (org level; triage splits it into sub-issues), the issue form
 `ISSUE_TEMPLATE/project.yml` and a sandbox test come after stage 2b and before stage 3, in their
 own Plan Mode round. Stages 3, 4 and 5 follow, one per step.
+
+### Issue type Project (2026-10-11)
+
+Decisions (user, Plan Mode round): the type `Project` always splits; the parent keeps `Project` and
+is still prioritised; only the author sets it, through the form, so the model `type` enum stays
+`Task|Bug|Feature`; a Project that names fewer than two deliverables is `needs_info`; the child
+cap stays 5; the org type is created by the agent on the user's go (the user was on a phone);
+the form lives in `triage-sandbox` only.
+
+Changes: `workflows` `5652f43` (prompt: three rules; `triage.yml`: step `Read the issue type`,
+`Issue type:` in the prompt, `ISSUE_TYPE` in the apply step, Project branch, guard of at least two
+children, type PATCH skipped for `Project`). `triage-sandbox` `0d5ba96`
+(`.github/ISSUE_TEMPLATE/project.yml`). Both pushed.
+
+Org type: `POST /orgs/becloud-dev/issue-types` with `name`, `is_enabled`, `description`, `color`
+created `Project` (id `900748196`, purple). The token had `admin:org`. Body parameters were taken
+from the REST docs page through a page summarizer (raw OpenAPI source unread); the call itself
+returned the object with those fields.
+
+Fixture check on jq 1.7.1 (SHA-256 `5942c9b0...c8ff5` matches the release `sha256sum.txt`), 9 cases:
+Project with 0 or 1 children fails, with 3 passes and ignores a model `type`; Bug and an untyped
+issue behave as before. Project/1 and Bug/1 fail in the existing range check, silently.
+
+Sandbox runs (`gh api` read-back):
+
+| Case | Issue | Run | Result |
+|---|---|---|---|
+| a. Project, 3 deliverables | #15 | `38182908746` | type `Project`, Priority `Medium`, 3 sub-issues #16-#18 typed `Feature`, no label, one comment with "Type: Project. Set by the author in the issue form." |
+| b. Project, 1 deliverable | #19 | `38183021152` | type `Project`, label `needs-info`, no Priority, no sub-issues, one comment with 2 questions |
+| c. Untyped Bug | #20 | `38183145951` | type `Bug`, Priority `High`, no sub-issues, one comment, as before |
+
+Inference: the Project branch, the skipped PATCH and the always-split rule work on the runner. The
+Priority write succeeded through the API with Priority not pinned to `Project`.
+
+Gaps (recorded, not closed):
+
+| Gap | Why it matters | What would close it |
+|---|---|---|
+| Form `type: Project` applied on submit | only a missing type was observed; cases a and b were created with `gh issue create --type` | the user submits the form in the browser |
+| Priority pinned to `Project` in the UI | the API write worked unpinned; the sidebar display is unread | look at #15 in the browser |
+| Project with one child from the model | falls into the existing range check: silent fail, no comment | a run where the model returns one child instead of `needs_info` |
+| Child cap 5 | a larger project needs a second pass | decision for a later round |
+| Org-wide form distribution | the form exists in the sandbox only | the sync step, stage 5 or later |
+| Re-run of a Project that has sub-issues | the idempotency reset applies after the guard; not run | a second `triage` label on #15 |
+| Job summary of the three runs | only in the browser | read in the browser |
