@@ -1041,3 +1041,31 @@ Interpretation (inference):
 Unverified or not exercised: three events in a row (the docs say the middle pending run is
 cancelled); which docs variant (`queue: single|max`, flag `actions-nga`) applies on Free; whether
 a duplicate comment matters to the owner (a design question, not a defect found).
+
+### Live results: needs_info (2026-10-11)
+
+Source: `gh` read-only calls on `becloud-dev/triage-sandbox` after the user's sandbox writes:
+issues #3 ("The app is broken") and #4 (accented search) created, label `triage` applied to
+both. Runs `38167016110` (#3) and `38167018047` (#4), both `success`; run-record artifacts
+`run-record-38167016110-1` and `run-record-38167018047-1` downloaded and read.
+
+| Observation | #3 | #4 |
+|---|---|---|
+| Run start / end | 19:12:15Z / about 19:12:52Z | 19:12:16Z / about 19:12:54Z |
+| Issue after run | label `needs-info`; type none; no Priority value; label `triage` removed | type `Bug`; Priority `High`; no labels |
+| Comment | 5 numbered questions and a reason line | two-sentence rationale |
+| Run record | `num_turns` 4, 937 output tokens, 19622 cache creation, `total_cost_usd` 0.00489 | `num_turns` 4, 659 output tokens, 5802 cache creation, `total_cost_usd` 0.00212 |
+| Common | model `claude-haiku-5-5`, `auth` oauth, `is_error` false, `permission_denials_count` 0, `costBasis` list | same |
+
+Interpretation (inference):
+
+- The `needs_info` outcome skips the type and Priority writes and still removes the start
+  label, as designed.
+- Runs for different issues are not serialized: the two jobs overlapped.
+- `costBasis: list` is present on OAuth in both records, so `total_cost_usd` is a list-price
+  figure; what the subscription is charged is unverified. The 2.3x cost difference tracks
+  cache-creation tokens; its cause was not read.
+- #3 received exactly 5 questions, the cap, for a four-word issue.
+
+Unverified or not exercised: the value of `job.workflow_sha` and the job summary text; the
+haiku verdict quality on real issues; the format fix and the split; A3 (the Anthropic reply).
