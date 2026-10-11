@@ -1197,3 +1197,37 @@ Source: raw `github/rest-api-description` `api.github.com.json` (`main`) and `gh
 Interpretation (inference): the split guard can read `sub_issues_summary.total` from
 `GET .../issues/{n}` without paging, so it does not depend on the `gh` version on the runner.
 Whether `GITHUB_TOKEN` with `issues: write` may add a sub-issue is unverified until a live run.
+
+### Live results: split (2026-10-11)
+
+Source: `gh` read-only calls on `becloud-dev/triage-sandbox` after `workflows` `98054ea`, then
+`1e6362e`, were pushed to `main`; issues #8 and #12 created and label `triage` applied by the
+user's go, and `triage` re-applied to #8. Runs `38174294323` (#8, `failure`), `38174522614`
+(#8 again, `success`), `38174777474` (#12, `success`); run-record artifacts read; the failed
+step's log read.
+
+| Run | Parent after | Children | Run record |
+|---|---|---|---|
+| `38174294323` (#8, three changes) | `Feature`, `Medium`; comment ends `Split into: #9 #10 #11`; no format fix | #9 Feature, #10 Bug, #11 Task; parent #8, no labels, no Priority, bodies end `Split from #8` with a "Done when" line | `num_turns` 5, `total_cost_usd` 0.00590, 0 denials; "Apply the verdict" `failure` after the comment was posted |
+| `38174522614` (#8 re-labelled) | one more comment, no `Split into` line | still #9 to #11, total 3 | `num_turns` 5, `total_cost_usd` 0.00248, 0 denials; `success` |
+| `38174777474` (#12, two changes) | `Feature`, `Medium`; comment ends `Split into: #13 #14` | #13 and #14 Features; parent #12, no labels | `num_turns` 4, `total_cost_usd` 0.00240, 0 denials; `success` |
+
+Interpretation (inference):
+
+- `GITHUB_TOKEN` with `issues: write` created typed issues and set their parent; the runner's
+  `gh` handled `--parent` and `--type`; 3 sequential creates showed no secondary rate limit.
+- The first run failed at the final status check, after the three children and the comment
+  existed: the immediate read-back of `sub_issues_summary.total` is the only remaining path to
+  that failure. The count read 3 afterwards (REST and the list). The cause is most likely a lag
+  in the derived count; the read value at that instant was not captured.
+- With a bounded poll (5 reads, 2 s apart) run `38174777474` passed. This is consistent with the
+  lag but does not prove it; the read count is in the step summary, which the API does not
+  expose.
+- The guard worked: with 3 sub-issues present, the re-applied label created no children and
+  posted a second triage comment.
+- The parent of a mixed issue was typed `Feature` while its evidence said the parent is mixed.
+
+Unverified or not exercised: whether the poll needed more than one read; that the model returned
+`children` again on the guard run (it was skipped either way); a partial-failure path of the
+creation loop; a split on an issue with a `.yml` form or several templates; three events in a
+row; A3 (the Anthropic reply).
