@@ -196,3 +196,30 @@ Implications (inference):
 - Milestones are per repo, so an org-wide roadmap needs Projects v2, not milestones alone.
 - Labels are per repo and must be created in each project repo by a sync step.
 - Setting an issue type needs push access; a workflow token without it would silently skip it.
+
+### GitHub App permission keys (#5, #8), read 2026-10-11
+
+Sources: `actions/create-github-app-token` `action.yml` (raw), `github/rest-api-description`
+`app-permissions` schema (raw), `github/docs` `server-to-server-permissions.json` (raw).
+
+| Need | Token API key | Action input | Levels |
+|---|---|---|---|
+| Projects v2 (organization) | `organization_projects` | `permission-organization-projects` | read, write, admin |
+| Projects (repository, classic) | `repository_projects` | `permission-repository-projects` | read, write, admin |
+| Issues, sub-issues, labels, milestones | `issues` | `permission-issues` | read, write |
+| Pull requests | `pull_requests` | `permission-pull-requests` | read, write |
+| Contents | `contents` | `permission-contents` | read, write |
+| Metadata | `metadata` | `permission-metadata` | read |
+
+- Input name rule: `permission-` plus the key with `_` replaced by `-`.
+- A requested permission must already be granted to the installation, or token creation fails.
+  Permissions added to an App need administrator approval on the installation first.
+- Minimum set for the design: `issues: write`, `pull_requests: write`, `contents: read`,
+  `organization_projects: write`, `metadata: read`. Not verified against a working workflow.
+
+Unverified: the docs permission data lists an organization "Issue Types" permission and
+"Variables" permissions (repository and organization) as usable by installation tokens, but the
+`app-permissions` schema and `action.yml` expose no key or input for either. Minting a token
+that carries them was not tested. The design does not depend on them: setting an issue type is
+done through `issues: write` (section 5, #6), and the owners variable is read through the `vars`
+context with no API call.
