@@ -105,7 +105,7 @@ jobs:
               | (if ($bugs + $feats) == 0 then 0 else ($bugs / ($bugs + $feats)) end) as $share
               | ([$titles[0][], $tags[0][] | try semver catch empty] | sort | last) as $top
               | ($all | map(select(.milestone == null)
-                            | select(any(.labels[]; .name == "needs-info") | not))
+                            | select(any(.labels[]; . == "needs-info") | not))
                       | sort_by([(.priority | rank), .created_at])) as $cand
               | {
                   total: ($cand | length),
