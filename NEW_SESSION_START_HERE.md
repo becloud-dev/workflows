@@ -1,59 +1,60 @@
 # New session start
 
 ## Status
-2026-10-11T15:18-03:00: becloud-dev shared AI workflows. Triage probe files committed locally;
-sandbox repo and org secret exist. Blocked: the user's A4, A6b, A7, A3, then the first run.
+2026-10-11T15:42-03:00: becloud-dev shared AI workflows. First live triage run passed on the
+sandbox; findings recorded in section 5, committed locally, not pushed.
 
-## Resume here (first command: `git log --oneline`)
-1. The user reports pass/fail with exact error text: A6b variables `OWNERS`,
-   `PRIORITY_FIELD_ID=48149712` on the sandbox; A7 labels `triage`, `needs-info`, issue types,
-   Actions setting; A3 Anthropic question; A4 public remote + push (the user's call).
-2. R1 after A4: copy `docs/probe/consumer-triage.yml` to the sandbox
-   `.github/workflows/triage.yml` on `main`. R2-R4: test issue, apply `triage`, report the
-   run summary and step conclusions.
-3. Record the run in section 5 (text shown first), correct what it contradicts; then the
-   stage 1 workflow draft and a haiku quality check on real issues.
+## Resume here (first command: `git log --oneline @{u}..HEAD`)
+1. R5: label a second issue `triage` while a run is active and read `gh run list` for queued or
+   cancelled (concurrency, Round 5 item 13). A write to the sandbox only, on the user's go.
+2. A3: the user reports Anthropic's reply on subscription OAuth for a public project.
+3. Stage 1 draft (split, needs-info, format fix) shown before any write; then a haiku quality
+   check on a small sample of real issues.
+4. When the org-level work ends: `gh auth refresh --remove-scopes admin:org` (the effect on
+   `read:org` is untested).
 
-## Git state (2026-10-11T15:18-03:00)
-- Branch `main`, clean (`git status -sb`), no stash (`git stash list`); no remote, no upstream,
-  nothing pushed (`git remote -v`; `git log @{u}..HEAD` fails).
-- 42 commits (`git log --oneline | wc -l`) before this refresh, which adds one. No PRs.
-- `becloud-dev` has one repo, `triage-sandbox`, public (`gh repo list becloud-dev`).
+## Git state (2026-10-11T15:42-03:00)
+- `workflows`: `main`, 1 ahead of `origin/main` (`ee36599`, unpushed), no stash, no PRs.
+  44 commits before this refresh, which adds one.
+- Local branch `backup-pre-rewrite` keeps the pre-rewrite history with the personal address:
+  never push it; delete it when no longer needed.
+- Sibling clone `../triage-sandbox`: `main` equals `origin/main` at `0929a1b`; issue #1 open.
 
 ## Done and verified (section 5 of `docs/third-party-review.md`)
-- Review #1-#21, monitoring, stage design, write payloads; issue field list and Priority
-  object read live (id `48149712`, options Urgent, High, Medium, Low, rank in `priority`).
-- Round 5 items 1-10 in section 4 (commits `6f50511`, `7ac8757`).
-- Sandbox repo created; org secret `CLAUDE_CODE_OAUTH_TOKEN`, visibility SELECTED, repo list
-  `triage-sandbox` only (`gh secret list --org becloud-dev`); CLI token has `admin:org`.
-- Probe files (commits `608936a`, `7aa3e72`): `.github/workflows/triage.yml`,
-  `.github/actions/record-run/action.yml`, `prompts/triage.md`, `docs/probe/consumer-triage.yml`.
-  YAML parses and the `jq` was run on sample JSON; `actionlint` not run, nothing run on GitHub.
-- `GET issue-field-values` keys `issue_field_id`, `single_select_option.name` and issue
-  `type.name` read raw (OpenAPI 1.1.4).
+- Remote `becloud-dev/workflows`, public, pushed; head equals local after the rewrite
+  (verified via `gh api .../commits`, SHAs compared).
+- Sandbox: variables `OWNERS`, `PRIORITY_FIELD_ID=48149712`; labels `triage`, `needs-info`; issue
+  types Task, Bug, Feature enabled; Actions allowed; org secret selected (read back with `gh`).
+- Run `38164369843` (issue #1): all steps success, type Bug, Priority Urgent, one comment,
+  `triage` label removed, `permission_denials_count` 0, `total_cost_usd` 0.00467535, OAuth
+  (verified via `gh run view`, `gh issue view`, `issue-field-values`, record artifact).
+- Author identity in both repos: `53844142+bentoluizv@users.noreply.github.com`; the 43 pushed
+  commits were rewritten and force-pushed (all author and committer emails read back).
 
-## Decisions (user)
-- 2026-10-11: framework-agnostic, GitHub-native; English; Free plan; all repos public; MIT,
-  holder Bento Machado. Native gates; owners-variable gate; only the code owner starts runs.
-- Subscription OAuth auth (Round 5 item 10), Anthropic to confirm; Bedrock later; model per
-  stage a caller input, full IDs pinned; AI PRs under a custom App bot.
-- Stage design: section 4 Rounds 3-5. Priority keeps GitHub defaults, no `P1`-`P5`.
-- UI pin checks skipped; the probe run shows whether the write lands.
+## Decisions (user, 2026-10-11, this session)
+- Framework-agnostic, GitHub-native; English; Free plan; all repos public; MIT, holder Bento
+  Machado; native gates; owners-variable gate; only the code owner starts runs.
+- Subscription OAuth for stage 1 (Round 5 item 10), Anthropic to confirm; model per stage a
+  caller input, full IDs pinned; AI PRs under a custom App bot; Priority keeps GitHub defaults.
+- Noreply address on all commits; the Gmail-to-noreply swap by rewrite and force-push, old
+  objects left to age out. The sandbox clone moved from `~/.claude` to `~/workspace/becloud-dev`.
 
 ## Open and unverified
-- Not yet by the user: A3, A4, A6b (`gh variable list --repo becloud-dev/triage-sandbox` empty),
-  A7 labels (`triage`, `needs-info` absent), issue types and Actions setting (unchecked).
-- Live A: `GITHUB_TOKEN` writes type, Priority (names as value); Live B: `job.workflow_sha`
-  cross-repo; `vars` via `with:`; `GH_TOKEN` reaching the Claude process; allowlist; composite
-  at `@main`; OAuth cost fields; label removal; `concurrency`; secret read by a public repo.
-- Not verified: `issue_fields` as a `permissions:` key; `suggest`; `vars` in a called
-  workflow; Projects v2 writes; auto-merge; release PR checks with an App token; Pro limit;
-  `$/` cross-repo; `organization_members_only` on a public repo.
+- The old head `a91d057` is still readable by SHA on GitHub (verified via `gh api`); a full
+  purge needs delete and recreate, or GitHub Support. Not requested.
+- Not read: `job.workflow_sha` value (job summary not in the API); `costBasis: list` meaning on
+  OAuth; `licenseInfo` null on the first repo view (LICENSE file is present).
+- Not exercised: concurrency, `needs-info`, format fix, split; `issue_fields` as a
+  `permissions:` key; `suggest`; `vars` in a called workflow; Projects v2; auto-merge.
+- `ubuntu-latest` moves to Ubuntu 26 on 2026-10-19 (notice only).
 
 ## Pointers
 - `docs/third-party-review.md`: flow, mapping, review list, decisions (4), findings (5).
-  Probe: `.github/`, `prompts/`, `docs/probe/`. Inspiration: `bentoluizv/patagonia-trip`.
+  Probe: `.github/`, `prompts/`, `docs/probe/`. Sandbox: `../triage-sandbox`.
+- `git` fails inside the Bash sandbox here (userns); `gh` works. Inspiration:
+  `bentoluizv/patagonia-trip`.
 
 ## Conventions in force
 - Plan gate: exact text before any write; local commits per verified step; no push without a go.
 - Docs: no personal pronouns; English; raw sources for design claims.
+- A commit is denied by a hook while this file is over 60 lines: `wc -l` first.
