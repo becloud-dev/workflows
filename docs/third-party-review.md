@@ -1756,3 +1756,54 @@ Gaps (recorded, not closed):
 | Org-wide form distribution | the form exists in the sandbox only | the sync step, stage 5 or later |
 | Re-run of a Project that has sub-issues | the idempotency reset applies after the guard; not run | a second `triage` label on #15 |
 | Job summary of the three runs | only in the browser | read in the browser |
+
+### Stage 3: UX and UI research (2026-10-11)
+
+Decisions (user, Plan Mode round): one reusable `ux-ui.yml` with two Claude steps (UX, then UI
+reading `.ux/ux.json`); two issue comments with marker lines `<!-- ux-research -->` and
+`<!-- ui-research -->`, no files and no PR; optional caller input `design_system_path`, none means
+no tokens; the gate is the owner swapping `UX/UI` for `RELEASE`; a thin issue gets questions and
+`needs-info`; read-only tools (`gh issue view`, `Read`, `Grep`, `Glob`); an issue of type `Project`
+is skipped with one comment; age rule and Urgent-first stay with the planner.
+
+Changes: `workflows` `6bd173d` (prompts `ux-research.md`, `ui-research.md`; `ux-ui.yml`);
+`triage-sandbox` `80e107a` (caller, `docs/design-system.md`); label `UX/UI` created on the sandbox.
+Both pushed.
+
+Details chosen inside the decisions: a re-run posts new comments and edits none; `record-run` writes
+a fixed `run-record.json`, so the UX record is copied aside before the UI record is built; a
+`design_system_path` that is absolute or contains `..` is refused; a UI result with
+`design_system_used: false` and tokens is refused; triple backticks in model text are replaced
+before a fenced block.
+
+Fixture check on jq 1.7.1 (the real `run:` blocks extracted from the workflow, a stub `gh`): UX
+and UI render and validate; `needs_info` with 0 questions, 1 requirement, and tokens without a
+design system fail; a fence in the layout is escaped; the path guard accepts none and a relative
+file, refuses `/etc/passwd`, `../x` and a missing file.
+
+Sandbox runs (`gh api` read-back):
+
+| Case | Issue | Run | Result |
+|---|---|---|---|
+| a. clear UI issue, design system given | #13 | `38183744281` | UX and UI comments, `UX/UI` stays; both run records in the artifact (5 and 4 turns, 0.098 and 0.105 USD, sonnet-5-5) |
+| b. thin issue | #21 | `38183881071` | label `needs-info`, 5 questions, UI steps skipped |
+| c. Project | #15 | `38184069206` | one skip comment, Claude steps skipped, sub-issues untouched |
+
+Inference: the mechanics hold on the runner. In case a the UX is grounded in the issue text, and
+every token cites a section of `docs/design-system.md` with matching values. Quality finding: the UI
+step chose a one-row-per-invoice table because the design system defines a Table; the issue does
+not say whether the button sits on a list or on one invoice, and the gaps list did not flag that.
+
+Gaps (recorded, not closed):
+
+| Gap | Why it matters | What would close it |
+|---|---|---|
+| Unstated screen shape not flagged as a gap | case a assumed a list from the available components | a prompt line: when the issue does not say the screen shape, list it in `gaps`; then a re-run of #13 |
+| `design_system_path` empty, live | fixture only; the model must design without colours | a caller with the input empty and a run |
+| Job summary of the three runs | only in the browser | read in the browser |
+| `needs-info` label in a fresh consumer repo | `gh issue edit --add-label` fails when it is missing | the label sync step (stage 5 or later) |
+| Model text with `@` mentions goes into comments unfiltered | a mention notifies a person | a decision on filtering |
+| Re-run duplicates comments | the latest marker comment is current, old ones stay | a decision: edit in place or keep history |
+| The UI step reads the UX of the same run | an owner edit to the UX comment is not seen | a decision, with the gate design for stage 4 |
+| Gate (`UX/UI` to `RELEASE`) not exercised | stage 4 does not exist yet | stage 4 |
+| No age rule; Urgent-first across milestones | planner decisions carried from 2a and 2b | a planner round |
