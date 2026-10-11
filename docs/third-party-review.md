@@ -1359,3 +1359,32 @@ that name as a required check would need updating (not checked; only the sandbox
 workflow today).
 
 Unverified: zizmor online audits; a caller with branch protection on the old check name.
+
+### zizmor in CI: action and exit codes (read 2026-10-11)
+
+Source: raw `zizmorcore/zizmor` `docs/integrations.md` and `docs/usage.md` (`main`); raw
+`zizmorcore/zizmor-action` `action.yml`, `action.sh` and `support/versions` at
+`cc914d7f3750a2d13d75c7f184a1060aa0e9d482` (`v0.6.4`, latest release); `gh api
+.../git/ref/tags/v0.6.4`; `gh repo view becloud-dev/workflows`. A first read without a ref came
+from the default branch head (4 commits ahead, unreleased) and was discarded.
+
+| Topic | Finding |
+|---|---|
+| Recommended integration | `zizmorcore/zizmor-action`; the docs example pins `@cc914d7f...# v0.6.4`, a lightweight tag that resolves to the same commit |
+| Install path at `v0.6.4` | `docker pull ghcr.io/zizmorcore/zizmor:<version>@sha256:<digest>` and `docker run` with the workspace mounted read-only; digests come from `support/versions` |
+| Version | input `version` defaults to `latest`; `1.30.1` is in `support/versions` with digest `sha256:a2eb396d...`, equal to `latest`; an unlisted version fails with "Unknown version" |
+| Online audits | input `online-audits` defaults `true`; `token` defaults to `github.token` |
+| Result mode | `advanced-security` defaults `true` (SARIF through `upload-sarif`, needs `security-events: write`); `annotations` is mutually exclusive with it |
+| Gate | SARIF mode exits 0 on findings; with both off the format is plain and the container's exit code is returned, 11 to 14 by highest severity (informational 11), which fails the job |
+| Permissions | no special token permission for a public repo; `contents: read` for private repos; `security-events: write` only for SARIF |
+| Repository | `becloud-dev/workflows` is `PUBLIC` |
+
+Interpretation (inference): the action with `advanced-security: false` and no annotations is
+the one form that fails a PR check on findings. Informational findings fail it too, so a
+severity floor is a decision. The `upload-sarif` step is conditional and does not run in this
+mode. The pinned release needs Docker on the runner and pulls from `ghcr.io`; unreleased `main`
+drops Docker, so a later bump changes the install path.
+
+Unverified: whether `--format=github` keeps exit codes 11 and above (the docs list only
+`--format=sarif` and `--no-exit-codes` as removing them); that code scanning is enabled on the
+repository; Docker and `ghcr.io` access on `ubuntu-latest` (not read; a live PR run tests it).
