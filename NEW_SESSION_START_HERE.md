@@ -15,8 +15,8 @@ reachable gaps, show the exact text, wait for the go, write, commit locally. Fir
 - Branch `main`, clean tree (verified via `git status -sb`).
 - No remote, no upstream: nothing is pushed.
 - 22 commits including this refresh (verified via `git log --oneline`).
-- Probe repos `becloud-dev/.github` (private) and `becloud-dev/tmp-template-probe` (public) still
-  exist; delete after `gh auth refresh -s delete_repo`.
+- Probe repos deleted 2026-10-11; the org `becloud-dev` has no repositories yet (verified via
+  `gh repo list becloud-dev`).
 
 ## Done and verified (section 5)
 - Hard blockers, data model, App permission keys, Claude Code Action, models and billing.
