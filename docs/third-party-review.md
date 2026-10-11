@@ -223,3 +223,36 @@ Unverified: the docs permission data lists an organization "Issue Types" permiss
 that carries them was not tested. The design does not depend on them: setting an issue type is
 done through `issues: write` (section 5, #6), and the owners variable is read through the `vars`
 context with no API call.
+
+### Claude Code Action (#18), read 2026-10-11
+
+Sources: `anthropics/claude-code-action` `action.yml`, `docs/setup.md`, `docs/security.md` (raw,
+through a page summarizer) and `code.claude.com/docs/en/github-actions`.
+
+| Topic | Finding |
+|---|---|
+| Mode | `mode` is not an input in v1. No `prompt`: interactive, waits for `@claude`, answers in a comment. With `prompt`: automation, runs on any event, output in the run log unless the prompt and tools post elsewhere |
+| `track_progress` | Current. Default `"false"`; forces tag mode with tracking comments for PR `opened`, `synchronize`, `ready_for_review`, `reopened`, `labeled` and issue `opened`, `edited`, `labeled`, `assigned` |
+| Tools | No `allowed_tools` input. `--allowedTools` (alias `--allowed-tools`) goes in `claude_args`. With a plain-text prompt there is no shell or GitHub API access until tools are granted by `--allowedTools` or `permissions.allow` in `settings` |
+| Model | No `model` input; `--model` in `claude_args`, else the Claude Code default |
+| Auth | `anthropic_api_key`, `claude_code_oauth_token` (tied to the subscription of the person who ran `claude setup-token`; docs recommend an API key for a shared org secret) or workload identity federation (`id-token: write`) |
+| Org rollout | Install the App once, org-level secret, job defined once as a reusable workflow |
+| Triggers | Write access required on issue and PR events (skipped for events no user authors, e.g. `schedule`). Bot actors rejected unless in `allowed_bots`; allowed bots are not checked for repository permissions |
+| App | The official Claude App has a fixed permission set that cannot be accepted in part. A custom App needs Contents, Issues, Pull requests (read and write) and is passed as `github_token` from `actions/create-github-app-token` |
+| Pull requests | "Claude does not create pull requests automatically"; it commits to a branch and links to the creation page. Merge and approval are not addressed |
+| CI on bot commits | Commits made with `GITHUB_TOKEN` do not start workflows; use the Claude App or a custom App token |
+| Injection | Hidden markdown and invisible characters are stripped, "new bypasses may appear"; config files are restored from the base branch on PRs |
+
+Implications (inference):
+
+- An App-token hand-off between stages needs the App bot in `allowed_bots`; the login is
+  probably `<app-slug>[bot]`, not verified.
+- Whether `gh pr create` works in automation mode under an allowed `Bash(gh pr create:*)` tool
+  is not stated. Stage 4 as drawn (DEV opens the PR) depends on it.
+- The owners variable stays the real gate, since `allowed_bots` skips permission checks.
+- Issue bodies are untrusted input to triage; tool lists per stage should be minimal.
+
+Unverified: how a Claude step writes to Projects v2 with the App token; whether a custom App
+path needs `id-token: write`; the current major of `create-github-app-token` (the setup page
+pins `@v1`); model IDs in the docs examples are inconsistent (`claude-opus-5-5`,
+`claude-sonnet-5`), settled in #19. `docs/usage.md` and `docs/faq.md` not read.
