@@ -1310,3 +1310,33 @@ not read. The parent of the mixed issue was typed `Task` here and `Feature` in e
 
 Unverified or not exercised: `$/` from a caller on a SHA other than `main` head; zizmor on the
 workflow; a Dependabot config; the `setup-bun` pin inside `claude-code-action`.
+
+### zizmor on the workflows (read and run 2026-10-11)
+
+Source: raw `zizmorcore/zizmor` `docs/usage.md` and `docs/audits.md` (`main`); `zizmor` v1.30.1
+(`gh api .../releases/latest`, published 2026-09-09) run through `uvx` with `--offline` on
+`.github` at `workflows` `3b4ad1f`.
+
+| Run | Result |
+|---|---|
+| Default persona (`regular`) | no findings, "3 suppressed" |
+| `--persona=auditor` | 3 findings, all in `triage.yml`; `record-run/action.yml` has none |
+
+| Audit | Severity | Location | Finding |
+|---|---|---|---|
+| `excessive-permissions` | medium (confidence Medium) | `triage.yml:1` | "default permissions used due to no permissions: block"; docs remedy: `permissions: {}` at workflow level |
+| `undocumented-permissions` | low | `triage.yml:27` | `issues: write` has no explanatory comment |
+| `anonymous-definition` | info | `triage.yml:21` | job `triage` has no `name:` |
+
+Interpretation (inference):
+
+- The 3 suppressed results are the 3 auditor-persona findings: the repo has no `zizmor: ignore`
+  comment and no zizmor config file, and the docs say the default persona drops auditor-level
+  results.
+- The job sets `contents: read` and `issues: write`, so `excessive-permissions` is about the
+  missing workflow-level default, not an over-grant today.
+
+Unverified: `impostor-commit`, `known-vulnerable-actions` and `stale-action-refs` are marked
+"not working offline" in `audits.md`, so they did not run; they need a token and online mode.
+The `uvx` package was taken from PyPI at the pinned version; its provenance beyond the version
+matching the GitHub release was not checked.
