@@ -6,8 +6,8 @@ monitoring, stage design (section 4 Round 3), round 4 inputs recorded; #22 defer
 confirmation postponed.
 
 ## Resume here (first command: `git log --oneline`)
-1. User go to record in section 5 "Live confirmations before triage" (A/B below) and in
-   section 4 the round 4 decisions below. Show exact text first.
+1. Show exact text, then on a go record the round 4 decisions below in section 4 (section 5
+   "Live confirmations before triage" is recorded).
 2. Read the reachable REST docs: `issue-field-values` payload, `type` on issue update.
 3. Triage round: questions (start on `triage` label vs `opened`, missing-information
    handling, sub-issue loop-back), then the draft shown before any write.
@@ -46,7 +46,7 @@ confirmation postponed.
 - Live A: issue fields; `GITHUB_TOKEN` writes type, Priority, sub-issues. Live B:
   `job.workflow_sha` cross-repo; `vars` via `with:`; haiku ID and allowlist; result fields;
   label removal and `concurrency`; org secret on a public repo. Probe needs a remote for
-  `workflows` and a public sandbox repo (earlier notes say private: confirm).
+  `workflows` and a public sandbox repo (user, 2026-10-11: public, like all others).
 - Not verified: ruleset rules on Free public; `vars` inside a called workflow; Projects v2
   writes; `GITHUB_TOKEN` approval vs code owners; native auto-merge; release PR checks with an
   App token; Pro limit behaviour; OAuth cost fields; billing rows for public; `$/` cross-repo.

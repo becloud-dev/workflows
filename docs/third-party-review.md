@@ -805,3 +805,35 @@ Corrected: the last paragraph of "Stage design inputs" lists "how a called workf
 repository" as unverified; it is documented above. Still unverified: `job.workflow_sha` populated in
 a called workflow on a Free public repo (docs state it; live probe postponed); org issue fields
 present (needs the account); option-count limit of a single-select.
+
+### Live confirmations before triage (2026-10-11)
+
+Section A changes the triage design; section B is confirmed by the first triage run, with the
+workflow written first. Settled by docs, no live check: the `workflow_call` event payload is "the
+same event payload from the calling workflow", so `github.event.sender` and `label` are the
+caller's; setting an issue type needs push access (#6); `gh issue edit --type/--parent` exist (#20).
+
+A. Changes the design:
+
+| # | Confirmation | Why triage depends on it | Needs |
+|---|---|---|---|
+| 1 | Org Settings > Planning > Issue fields present, Priority editable to P1-P5, pinned to Task, Bug, Feature and "Issues without a type" | Priority field versus `P1`-`P5` labels; triage writes it | The user's answer in the UI |
+| 2 | `GITHUB_TOKEN` with `issues: write` can write issue type, Priority field value, sub-issues and labels from a called workflow | Decides whether stage 1 needs the App at all (the App is required for PRs and chaining). The `issue-field-values` rows carry `additional-permissions: true`, unread | One run in a sandbox repo with the field present |
+| 3 | Anthropic's answer on subscription OAuth for a public project | Which secret the triage input carries (`claude_code_oauth_token` or `anthropic_api_key`); the first run uses an API key if there is no answer | The drafted question, unsent |
+
+B. Confirmed by the first triage run:
+
+| # | Confirmation | What a failure changes |
+|---|---|---|
+| 4 | `job.workflow_repository` and `job.workflow_sha` populated for a cross-repo called workflow on Free; sparse second checkout works | Prompt lookup falls back to a `ref` input |
+| 5 | `vars` passed through caller `with:`; owner check on `github.event.sender.login` | The owners gate moves into the caller's `if:` |
+| 6 | `claude-code-action@v1` with `--model claude-haiku-5-5` accepted; the `Bash(gh ...)` allowlist permits the writes; `permission_denials_count` is 0 | Allowlist shape |
+| 7 | Result fields and `modelUsage` per model on API key and on OAuth; composite action called cross-repo with a fully qualified `uses:`; summary plus 90-day artifact | Monitoring record fields |
+| 8 | `triage` label removed at the end; a second `labeled` while a run is active is cancelled or queued as intended (`concurrency`) | Loop and idempotency design |
+| 9 | Org secret and variables visible to a public repo on Free | Where the token lives |
+
+Not a confirmation: whether haiku classifies well is a measured quality question on a small sample
+of issues. Closed by reading, not live: the REST payload for `issue-field-values` and `type` on
+issue update, read in the next iteration. Probe: one public sandbox repo under `becloud-dev` and one
+consumer workflow calling a `triage` reusable workflow in `becloud-dev/workflows`, which needs a
+remote for `workflows`; everything the probe writes is public. Items 2 and 4-9 are covered by one run.
