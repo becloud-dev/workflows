@@ -31,8 +31,8 @@ For `triaged`:
   workaround counts only when the issue states it; silence about a workaround neither raises
   nor lowers the priority.
 - `type_evidence`: the words in the issue that decide the type.
-- `priority_evidence`: the flow affected, why it is or is not business-critical, and whether
-  a workaround is stated.
+- `priority_evidence`: two sentences at most: the flow affected and why it is or is not
+  business-critical, and whether a workaround is stated. Do not argue the other priorities.
 - `rationale`: one sentence: the impact on the business, in plain words.
 
 Then, for `triaged` only, check the format against the repository's issue template:
