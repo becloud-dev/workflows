@@ -69,7 +69,7 @@ jobs:
           claude_args: |
             --model ${{ inputs.model }}
             --allowedTools "Bash(gh issue view:*),Bash(ls .github/ISSUE_TEMPLATE:*),Read"
-            --json-schema '{"type":"object","properties":{"outcome":{"type":"string","enum":["triaged","needs_info"]},"type":{"type":"string","enum":["Task","Bug","Feature"]},"priority":{"type":"string","enum":["Urgent","High","Medium","Low"]},"rationale":{"type":"string"},"questions":{"type":"array","items":{"type":"string"},"maxItems":5},"body":{"type":"string"},"format_change":{"type":"string"},"type_evidence":{"type":"string"},"priority_evidence":{"type":"string"}},"required":["outcome","rationale"]}'
+            --json-schema '{"type":"object","properties":{"outcome":{"type":"string","enum":["triaged","needs_info"]},"type":{"type":"string","enum":["Task","Bug","Feature"]},"priority":{"type":"string","enum":["Urgent","High","Medium","Low"]},"rationale":{"type":"string"},"questions":{"type":"array","items":{"type":"string"},"maxItems":5},"body":{"type":"string"},"format_change":{"type":"string"},"type_evidence":{"type":"string"},"priority_evidence":{"type":"string"},"children":{"type":"array","maxItems":5,"items":{"type":"object","properties":{"title":{"type":"string"},"body":{"type":"string"},"type":{"type":"string","enum":["Task","Bug","Feature"]}},"required":["title","body","type"]}}},"required":["outcome","rationale"]}'
 
       - name: Apply the verdict
         if: steps.claude.outputs.structured_output != ''
@@ -103,7 +103,17 @@ jobs:
           fi
           type=$(jq -er .type <<<"$VERDICT")
           priority=$(jq -er .priority <<<"$VERDICT")
-          body=$(jq -r '.body // empty' <<<"$VERDICT")
+          n_children=$(jq '(.children // []) | length' <<<"$VERDICT")
+          jq -e '(.children // []) | length as $n | $n == 0 or ($n >= 2 and $n <= 5 and all(.[]; (.title | length) > 0 and (.body | length) > 0))' \
+            <<<"$VERDICT" > /dev/null
+          subs=$(gh api "$api" --jq '.sub_issues_summary.total')
+          if [ "$n_children" -gt 0 ] && [ "$subs" -gt 0 ]; then
+            n_children=0
+          fi
+          body=""
+          if [ "$n_children" -eq 0 ]; then
+            body=$(jq -r '.body // empty' <<<"$VERDICT")
+          fi
           if [ -n "$body" ]; then
             jq -er '.format_change | select(type == "string" and length > 0)' <<<"$VERDICT" \
               > "$RUNNER_TEMP/format.txt"
@@ -133,14 +143,36 @@ jobs:
               >> "$GITHUB_STEP_SUMMARY"
             test "$got_body" = "$body"
           fi
+          ok=1
+          created=""
+          if [ "$n_children" -gt 0 ]; then
+            for i in $(seq 0 $((n_children - 1))); do
+              jq -er ".children[$i].body" <<<"$VERDICT" > "$RUNNER_TEMP/child.md"
+              printf '\nSplit from #%s\n' "$ISSUE" >> "$RUNNER_TEMP/child.md"
+              child_title=$(jq -er ".children[$i].title" <<<"$VERDICT")
+              child_type=$(jq -er ".children[$i].type" <<<"$VERDICT")
+              url=$(gh issue create --repo "$GITHUB_REPOSITORY" --title "$child_title" \
+                --body-file "$RUNNER_TEMP/child.md" --type "$child_type" --parent "$ISSUE") \
+                || { ok=0; break; }
+              created="$created ${url##*/}"
+            done
+            got_subs=$(gh api "$api" --jq '.sub_issues_summary.total')
+            echo "- split: $n_children wanted, read back sub_issues_summary.total $got_subs" \
+              >> "$GITHUB_STEP_SUMMARY"
+            test "$got_subs" = "$n_children" || ok=0
+          fi
           {
             cat "$RUNNER_TEMP/rationale.txt"
             printf '\nType: %s. %s\nPriority: %s. %s\n' "$type" "$type_ev" "$priority" "$prio_ev"
+            if [ -n "$created" ]; then
+              printf '\nSplit into:%s\n' "$(printf ' #%s' $created)"
+            fi
             if [ -n "$body" ]; then
               printf '\nFormat fix: %s\n' "$(cat "$RUNNER_TEMP/format.txt")"
             fi
           } > "$RUNNER_TEMP/comment.txt"
           gh issue comment "$ISSUE" --body-file "$RUNNER_TEMP/comment.txt"
+          test "$ok" = 1
 
       - name: Record the run
         if: always()

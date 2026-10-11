@@ -11,7 +11,7 @@ First decide `outcome`:
   given. A Bug lacks what happened, what was expected or how to reproduce; a Feature lacks the
   problem it solves. Return `questions` (1 to 5, one line each, answerable by the author) and
   `rationale` (one or two sentences: what is missing and why it blocks triage). Leave `type`,
-  `priority`, `type_evidence` and `priority_evidence` out.
+  `priority`, `type_evidence`, `priority_evidence` and `children` out.
 - `triaged`: everything else. Return `type`, `priority`, `type_evidence`, `priority_evidence`
   and `rationale`.
 
@@ -34,6 +34,19 @@ For `triaged`:
 - `priority_evidence`: two sentences at most: the flow affected and why it is or is not
   business-critical, and whether a workaround is stated. Do not argue the other priorities.
 - `rationale`: one sentence: the impact on the business, in plain words.
+
+Then, for `triaged` only, check whether the issue is atomic:
+
+- Atomic: one change solves it and the change is self-contained.
+- Split only when the issue holds two or more independently deliverable changes, each
+  solvable and testable alone. One change with several steps is not a split, and neither is
+  one defect with several symptoms of one cause.
+- When splitting, return `children`: 2 to 5 objects with `title`, `body` and `type` (`Bug`,
+  `Feature` or `Task`). Each `body` is self-contained: the part of the original it covers and
+  what done looks like; add no fact the issue does not state. The parent is still triaged:
+  return its `type`, `priority` and evidence as usual.
+- A split wins over the format fix: when returning `children`, return neither `body` nor
+  `format_change`. Otherwise return no `children`.
 
 Then, for `triaged` only, check the format against the repository's issue template:
 
