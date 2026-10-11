@@ -69,7 +69,7 @@ jobs:
           claude_args: |
             --model ${{ inputs.model }}
             --allowedTools "Bash(gh issue view:*),Bash(ls .github/ISSUE_TEMPLATE:*),Read"
-            --json-schema '{"type":"object","properties":{"outcome":{"type":"string","enum":["triaged","needs_info"]},"type":{"type":"string","enum":["Task","Bug","Feature"]},"priority":{"type":"string","enum":["Urgent","High","Medium","Low"]},"rationale":{"type":"string"},"questions":{"type":"array","items":{"type":"string"},"maxItems":5},"body":{"type":"string"},"format_change":{"type":"string"}},"required":["outcome","rationale"]}'
+            --json-schema '{"type":"object","properties":{"outcome":{"type":"string","enum":["triaged","needs_info"]},"type":{"type":"string","enum":["Task","Bug","Feature"]},"priority":{"type":"string","enum":["Urgent","High","Medium","Low"]},"rationale":{"type":"string"},"questions":{"type":"array","items":{"type":"string"},"maxItems":5},"body":{"type":"string"},"format_change":{"type":"string"},"type_evidence":{"type":"string"},"priority_evidence":{"type":"string"}},"required":["outcome","rationale"]}'
 
       - name: Apply the verdict
         if: steps.claude.outputs.structured_output != ''
@@ -109,6 +109,8 @@ jobs:
               > "$RUNNER_TEMP/format.txt"
             printf '%s\n' "$body" > "$RUNNER_TEMP/body.md"
           fi
+          type_ev=$(jq -er '.type_evidence | select(type == "string" and length > 0)' <<<"$VERDICT")
+          prio_ev=$(jq -er '.priority_evidence | select(type == "string" and length > 0)' <<<"$VERDICT")
           gh api -X PATCH "$api" -f type="$type" --silent
           jq -n --argjson id "$FIELD_ID" --arg v "$priority" \
             '{issue_field_values:[{field_id:$id,value:$v}]}' \
@@ -130,9 +132,15 @@ jobs:
             echo "- format: body edited, read back $(test "$got_body" = "$body" && echo equal || echo DIFFERENT)" \
               >> "$GITHUB_STEP_SUMMARY"
             test "$got_body" = "$body"
-            printf '\nFormat fix: %s\n' "$(cat "$RUNNER_TEMP/format.txt")" >> "$RUNNER_TEMP/rationale.txt"
           fi
-          gh issue comment "$ISSUE" --body-file "$RUNNER_TEMP/rationale.txt"
+          {
+            cat "$RUNNER_TEMP/rationale.txt"
+            printf '\nType: %s. %s\nPriority: %s. %s\n' "$type" "$type_ev" "$priority" "$prio_ev"
+            if [ -n "$body" ]; then
+              printf '\nFormat fix: %s\n' "$(cat "$RUNNER_TEMP/format.txt")"
+            fi
+          } > "$RUNNER_TEMP/comment.txt"
+          gh issue comment "$ISSUE" --body-file "$RUNNER_TEMP/comment.txt"
 
       - name: Record the run
         if: always()
