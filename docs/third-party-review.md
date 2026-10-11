@@ -1116,3 +1116,39 @@ is a later increment.
 Unverified or not exercised: visibility of the edit history without write access; behaviour
 with several templates or a `.yml` form; the split; three events in a row; the value of
 `job.workflow_sha` and the job summary text; A3 (the Anthropic reply).
+
+### Live results: priority by business impact (2026-10-11)
+
+Source: `gh` read-only calls on `becloud-dev/triage-sandbox` after `workflows` `856e74e` was
+pushed to `main`; issue #6 ("Print preview icon on the reports page does nothing", free-form
+body, a stated workaround) created and label `triage` applied by the user's go. Run
+`38172402379`, `success`; run-record artifact read; run log read (full tool output is hidden by
+the action).
+
+| Observation | Value |
+|---|---|
+| Issue after run | type `Bug`; Priority `Medium`; no labels (`triage` removed) |
+| Comment | impact sentence, `Type: Bug. <evidence>`, `Priority: Medium. <evidence>`, `Format fix: <one line>` |
+| Priority evidence | names the flow, states it is not a purchase, payment, sign-in, submission or data loss, cites the stated workaround |
+| Body | text under `## What happened`; `## Expected behaviour` empty; the environment line under `## Steps to reproduce` |
+| Run record | `num_turns` 7, `total_cost_usd` 0.00636, 2656 output tokens, `permission_denials_count` 1, model `claude-haiku-5-5` |
+
+Interpretation (inference):
+
+- A visible but non-critical broken control is not `Urgent`: the business-impact rule held on
+  the case opposite to issue #5, and type and priority carry separate evidence.
+- The enforcement path that aborts on a missing evidence field was exercised offline with `jq`
+  (rc 4 on a missing or empty field), not yet by a live run.
+- `priority_evidence` ran five sentences, arguing why `High` did not apply; the prompt asked
+  for the flow, its criticality and the workaround.
+- The template has no environment heading, so "closest heading" placed the environment line
+  under `## Steps to reproduce`. Nothing was lost; the placement is slightly off.
+- One permission denial occurred (earlier runs: 0), with 7 turns against 5. The denied call is
+  not in the log. A guess (a command outside the allowlist) is unverified.
+
+Decisions (user, 2026-10-11): leave the denied call open and watch the count on later runs
+(`show_full_output` would print issue text in a public log); cap `priority_evidence` at two
+sentences; keep "closest heading" for text that fits no template heading.
+
+Unverified or not exercised: the denied tool call; the live abort path on a missing evidence
+field; the `Urgent` case on a stopped critical flow with no stated workaround; the split; A3.
