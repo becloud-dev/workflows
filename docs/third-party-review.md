@@ -1340,3 +1340,22 @@ Unverified: `impostor-commit`, `known-vulnerable-actions` and `stale-action-refs
 "not working offline" in `audits.md`, so they did not run; they need a token and online mode.
 The `uvx` package was taken from PyPI at the pinned version; its provenance beyond the version
 matching the GitHub release was not checked.
+
+### Live results: default permissions and job name (2026-10-11)
+
+Source: `gh` read-only calls on `becloud-dev/triage-sandbox` after `workflows` `d31ebc1` was
+pushed to `main`; the `triage` label applied to #8 by the user's go; run `38175941033`
+(`success`); run log read.
+
+| Check | Finding |
+|---|---|
+| Workflow commit | `triage.yml@refs/heads/main (d31ebc161e0a32f6b614dc879bd9aac3b7bcbe59)` |
+| Token | log "GITHUB_TOKEN Permissions": `Contents: read`, `Issues: write`, `Metadata: read` |
+| Job | `triage / Triage`, all steps `success`; sub-issues on #8 stay 3, one more comment |
+
+Interpretation (inference): the workflow-level `permissions: {}` did not reduce what the job
+holds. The job check name changed from `triage / triage` to `triage / Triage`; a caller with
+that name as a required check would need updating (not checked; only the sandbox calls the
+workflow today).
+
+Unverified: zizmor online audits; a caller with branch protection on the old check name.
