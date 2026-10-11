@@ -169,3 +169,30 @@ cancellation or refund terms; that is unverified.
   same organization).
 - Not yet verified on a Free org: that the setting is actually selectable there (settings are
   visible only once the repo exists).
+
+### Gate decisions (2026-10-11)
+
+- A failed gate sets a failing check and a blocking comment; the code owner merges by hand. No
+  automatic reverts or closes.
+- Gating labels (`RELEASE`, `READY TO LIVE`): a workflow removes the label and comments when the
+  actor is not in an owners list kept as a repo variable.
+
+### Token and data model (#4, #6, #7, #8, #9, #10), read 2026-10-11
+
+| # | Finding | Gap left open |
+|---|---|---|
+| 4 | "The token's permissions are limited to the repository that contains your workflow." Events it creates do not start new runs, except `workflow_dispatch` and `repository_dispatch`; `pull_request` runs it creates wait in an approval-required state | Workflow syntax lists 16 scopes (issues, pull-requests, contents, ...); none covers projects or sub-issues. The page text was read to character 100000 of 230295 |
+| 8 | "`GITHUB_TOKEN` is scoped to the repository level and cannot access projects." The docs use a GitHub App token (recommended for organization projects) or a classic PAT with `project` and `repo` scopes. Example trigger: `pull_request` `ready_for_review` | The App permission key names for projects are not on this page |
+| 6 | Up to 25 custom issue types per organization; defaults are in every organization. The REST create/update issue endpoints accept `type`; "Only users with push access can set the type", silently dropped otherwise | Plan requirement and private-repo availability not stated; who manages types not stated |
+| 7 | Sub-issue endpoints: POST/GET/DELETE `/repos/{owner}/{repo}/issues/{n}/sub_issues`, GET `.../parent`, PATCH `.../sub_issues/priority`. The sub-issue must belong to the same repository owner as the parent. Creating content too fast can hit secondary rate limits | Depth and per-parent limits and fine-grained permissions are not documented |
+| 9 | Milestone endpoints under `/repos/{owner}/{repo}/milestones`; fields `due_on`, `state`, `open_issues`, `closed_issues` | Per-repo scope is an inference from the paths; permissions not stated |
+| 10 | Per-issue label endpoints (add, set, remove one, remove all) and repo label CRUD. Archived labels cannot be added | No org-level label mechanism on the page; permissions not stated |
+
+Implications (inference):
+
+- A GitHub App token is required for any Projects v2 write; `GITHUB_TOKEN` cannot reach projects.
+- A token that only has `GITHUB_TOKEN` cannot trigger a follow-up workflow, so stage hand-offs
+  must use an App token, `workflow_dispatch` or `repository_dispatch`, or run in one workflow.
+- Milestones are per repo, so an org-wide roadmap needs Projects v2, not milestones alone.
+- Labels are per repo and must be created in each project repo by a sync step.
+- Setting an issue type needs push access; a workflow token without it would silently skip it.
