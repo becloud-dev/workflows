@@ -67,7 +67,7 @@ jobs:
             > .planner/all.json
           jq '{
                 total: length,
-                truncated: ([.[] | select(.priority != null)] | length) > 100,
+                truncated: (([.[] | select(.priority != null)] | length) > 100),
                 issues: ([.[] | select(.priority != null)] | .[0:100]),
                 unprioritised: [.[] | select(.priority == null) | del(.body)]
               }' .planner/all.json > .planner/backlog.json
