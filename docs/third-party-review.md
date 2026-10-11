@@ -1798,7 +1798,7 @@ Gaps (recorded, not closed):
 
 | Gap | Why it matters | What would close it |
 |---|---|---|
-| Unstated screen shape not flagged as a gap | case a assumed a list from the available components | a prompt line: when the issue does not say the screen shape, list it in `gaps`; then a re-run of #13 |
+| Unstated screen shape not flagged as a gap (closed on one run) | case a assumed a list from the available components | closed by `8f6d4b3`: re-run of #13, run `38184680888` (2026-10-11T23:33Z), `Gaps` item 1 names the list-or-single-item assumption; 8 further gaps listed, so the volume is higher; one run, not proof |
 | `design_system_path` empty, live | fixture only; the model must design without colours | a caller with the input empty and a run |
 | Job summary of the three runs | only in the browser | read in the browser |
 | `needs-info` label in a fresh consumer repo | `gh issue edit --add-label` fails when it is missing | the label sync step (stage 5 or later) |
@@ -1807,3 +1807,8 @@ Gaps (recorded, not closed):
 | The UI step reads the UX of the same run | an owner edit to the UX comment is not seen | a decision, with the gate design for stage 4 |
 | Gate (`UX/UI` to `RELEASE`) not exercised | stage 4 does not exist yet | stage 4 |
 | No age rule; Urgent-first across milestones | planner decisions carried from 2a and 2b | a planner round |
+
+Re-run after `8f6d4b3` (inference, one run): the UI comment's `Gaps` now states that the page is
+assumed to be a list with one button per row and that a single invoice would move the button to the
+page header's actions area. The layout is unchanged. Nine gaps in total; unverified whether that
+volume is useful or noisy across other issues.
