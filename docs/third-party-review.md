@@ -182,6 +182,10 @@ Round 5 (user, 2026-10-11; recommended answers accepted by "Go"), stage 1 triage
 9. Priority options: the org field keeps GitHub's defaults, Urgent, High, Medium, Low (rank by
    option `priority` 1 to 4). Amends Round 3 item 2 and Round 4 item 3: no `P1` to `P5`, no
    fallback labels. The criticality description per option is defined in the triage prompt.
+10. Authentication for the first run: the subscription OAuth token (`claude_code_oauth_token`,
+    secret `CLAUDE_CODE_OAUTH_TOKEN`, organization secret limited to the sandbox repository),
+    not an API key. Amends the fallback in "Live confirmations before triage" item 3. Anthropic's
+    answer (A3) is still open and decides whether the arrangement is kept for a public project.
 
 ## 5. Findings
 
@@ -936,3 +940,25 @@ table, item 1, asks for editing to P1-P5; superseded by Round 5 item 9.
 
 Still open: pinning to Task, Bug, Feature and "Issues without a type" (UI); option-count limit
 (not tested, no option added); meaning of `organization_members_only` on a public repo.
+
+### Live results: sandbox repo and org secret (2026-10-11)
+
+Source: two screenshots from the user (15:11, 15:13) and read-only `gh` metadata calls (names,
+visibility and repository list; no secret value read).
+
+| Check | Result |
+|---|---|
+| A5 `gh repo create becloud-dev/triage-sandbox --public --description "Consumer of the becloud-dev triage workflow" --clone` | Printed `https://github.com/becloud-dev/triage-sandbox`; no error |
+| A6a `gh secret set CLAUDE_CODE_OAUTH_TOKEN --org becloud-dev --repos triage-sandbox`, first attempt | `failed to fetch public key: HTTP 403: You must be an org admin or have the actions secrets fine-grained permission.` and `This API operation needs the "admin:org" scope`; CLI scopes were `delete_repo`, `gist`, `read:org`, `repo`, `workflow` |
+| A6a same command after the user's `gh auth refresh -h github.com -s admin:org` | `Set Actions secret CLAUDE_CODE_OAUTH_TOKEN for becloud-dev`; `gh secret list --org becloud-dev` shows `SELECTED`, updated `2026-10-11T18:13:43Z`; the repositories endpoint lists `becloud-dev/triage-sandbox` only |
+
+Implications (inference):
+
+- Writing an organization secret from the CLI needs `admin:org` (or the fine-grained secrets
+  permission); a repository secret needs only `repo`.
+- The Free plan accepts a public repository in an organization secret's selected list. Whether a
+  run in that repository reads it is live item 14, confirmed by the first run.
+- The CLI token now carries `admin:org`; removal is `gh auth refresh --remove-scopes admin:org`
+  (flag from the `gh` help; the effect on `read:org` is untested).
+
+Still open: A3, A4, A6b, A7 (labels, issue types, Actions setting); item 14 by run.
