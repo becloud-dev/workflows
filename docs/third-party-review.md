@@ -1069,3 +1069,50 @@ Interpretation (inference):
 
 Unverified or not exercised: the value of `job.workflow_sha` and the job summary text; the
 haiku verdict quality on real issues; the format fix and the split; A3 (the Anthropic reply).
+
+### Live results: format fix (2026-10-11)
+
+Source: `gh` read-only calls on `becloud-dev/triage-sandbox` after the user's writes: template
+`.github/ISSUE_TEMPLATE/bug.md` committed (`546c224`) and pushed together with `workflows`
+`fc02671`; issue #5 ("Export button does nothing on the reports page", free-form body) created
+and label `triage` applied. Run `38171318935`, `success`, every step `success`; run-record
+artifact `run-record-38171318935-1` read; edit history read through GraphQL
+`userContentEdits`.
+
+| Observation | Value |
+|---|---|
+| Issue after run | type `Bug`; Priority `Urgent`; no labels (`triage` removed) |
+| Body | reflowed under `## What happened`, `## Expected behaviour`, `## Steps to reproduce`; wording kept, one sentence moved |
+| Comment | one comment: rationale, then `Format fix: <one line>` |
+| Edit history | two entries at 20:14:32Z: the original body (editor `bentoluizv`) and the new one (editor `github-actions`) |
+| Run record | `num_turns` 5, `total_cost_usd` 0.00569, `permission_denials_count` 0, model `claude-haiku-5-5`, `costBasis` list |
+
+Interpretation (inference):
+
+- The `Bash(ls .github/ISSUE_TEMPLATE:*)` allowlist entry matched and the relative path resolved
+  in the caller checkout: the model listed and read the template (the extra turn).
+- The read-back step passed, so the body read back equal after any GitHub normalization; the
+  step summary line itself was not read.
+- Edits made through the API are kept in the edit history, so the original body is
+  recoverable. Visibility of that history to a viewer without write access is unverified.
+- The model followed "reformat only": nothing was added or dropped.
+
+Quality observations (one sample, recorded as open items, then acted on below):
+
+- Priority `Urgent` rested on "no workaround is mentioned": absence of a mention was read as
+  absence of a workaround.
+- The rationale named evidence for the priority and left the type implicit, although the prompt
+  asked for evidence on both.
+
+Decision (user, 2026-10-11): priority is judged by operational impact on the business: a
+business-critical flow stopped or corrupted (purchase, payment, sign-in, submission, core
+transaction, data loss or exposure) is `Urgent`; a broken control outside a critical flow is
+not, however visible. A stated workaround moves a stopped critical flow to `High`; silence about
+a workaround moves nothing. The comment carries separate evidence for the type and the priority,
+enforced by the prompt and by the workflow (a missing field aborts before any write).
+Criticality is inferred from the issue text; an optional per-repo file naming the critical flows
+is a later increment.
+
+Unverified or not exercised: visibility of the edit history without write access; behaviour
+with several templates or a `.yml` form; the split; three events in a row; the value of
+`job.workflow_sha` and the job summary text; A3 (the Anthropic reply).
