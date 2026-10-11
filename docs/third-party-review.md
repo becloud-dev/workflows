@@ -303,3 +303,41 @@ Unverified: behaviour of a run at the Pro limit; whether an existing OAuth token
 after a plan change; real tokens and minutes per run (needs a measured run); the last 16497
 characters of the model-config page; reusable-workflow billing across repos (not stated, same
 org so one owner).
+
+### Reusable workflows, events and syntax (#1, #2, #3), read 2026-10-11
+
+Sources: docs.github.com pages for #1 to #3 (through a page summarizer), then raw `github/docs`
+markdown (`workflow-syntax.md`, `events-that-trigger-workflows.md`, `contexts.md`,
+`reusing-workflow-configurations.md`, concurrency reusables) to close the gaps.
+
+| Topic | Finding |
+|---|---|
+| Call | Job level only: `{owner}/{repo}/.github/workflows/{file}@{ref}`; ref is a SHA, tag or branch (SHA safest). No expressions in `uses`; no subdirectories of `workflows` |
+| Access | Private called repo: its Access policy must allow caller repos. Caller repo: Actions permissions must allow actions and reusable workflows |
+| Inputs | Typed `boolean`, `number`, `string`; an undeclared input is an error. `with` values: the context table allows `github, needs, strategy, matrix, inputs, vars`; the prose on the same page lists only `github` and `needs` (table taken as authoritative, untested) |
+| Secrets | By name or `inherit` (org, repository and environment secrets, same org or enterprise); only to the directly called workflow; a missing environment secret resolves to an empty string unless `required: true` |
+| Outputs, env | Outputs map to job outputs; `env` does not propagate in either direction |
+| Permissions | `GITHUB_TOKEN` permissions can only be downgraded down the chain |
+| Limits | Ten levels, no loops; 50 unique reusable workflows per workflow file; caller job cannot use `environment` |
+| `github.workflow` | In a called workflow it is the caller's name; the same concurrency group in both layers cancels the caller |
+| Concurrency | One running run per group; default `queue: single` keeps one pending and a newer pending cancels the older; `queue: max` keeps up to 100, cannot combine with `cancel-in-progress: true`, FIFO order "not guaranteed". Group expressions: `github`, `inputs`, `vars` (job level adds `needs`, `strategy`, `matrix`). `queue` sits behind the docs flag `actions-nga` (`fpt` and `ghec`) |
+| Timeout | `jobs.<id>.timeout-minutes` default 360 |
+| `permissions` scopes | `actions`, `artifact-metadata`, `attestations`, `checks`, `code-quality`, `contents`, `deployments`, `discussions`, `id-token`, `issues`, `packages`, `pages`, `pull-requests`, `security-events`, `statuses`, `vulnerability-alerts`; once one is named the rest are `none`; no projects scope |
+| Events | `issues` types include `typed`, `untyped`, `field_added`, `field_removed`, `milestoned`; issue events run the default-branch workflow file; `issue_comment` covers PRs (`github.event.issue.pull_request`); `label` is label CRUD, not applying a label; `workflow_dispatch` up to 25 inputs; `repository_dispatch` `client_payload` up to 10 properties; `workflow_run` chains deeper than three do not run; `schedule` minimum 5 minutes, default branch only |
+| `projects_v2_item` | Absent from the raw events list: no documented Actions trigger for Projects item changes |
+| `GITHUB_TOKEN` events | Do not start runs, except `workflow_dispatch` and `repository_dispatch` |
+
+Implications (inference):
+
+- The consumer's caller file names the shared repo ref, so a moving tag rolls an update and a SHA
+  pins it.
+- Planner runs cannot follow Projects field edits; use `workflow_dispatch` or labels.
+- Per-issue serialization: a group per issue number at the caller, with `queue: max` if no event
+  may be dropped; name the group explicitly, not from `github.workflow`.
+- Set `timeout-minutes` explicitly; 360 would spend 18% of the Free quota in one stuck job.
+- The owners value is passed as an input from `vars` in the caller.
+
+Unverified: whether `vars` resolve inside a called workflow without being passed; whether
+dispatching a workflow with `GITHUB_TOKEN` needs `actions: write`; that `fpt` in docs versioning
+means Free, Pro and Team (docs convention, not stated in the files read); the `with` context
+contradiction above, untested.
