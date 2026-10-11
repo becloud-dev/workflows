@@ -860,3 +860,32 @@ of issues. Closed by reading, not live: the REST payload for `issue-field-values
 issue update, read in the next iteration. Probe: one public sandbox repo under `becloud-dev` and one
 consumer workflow calling a `triage` reusable workflow in `becloud-dev/workflows`, which needs a
 remote for `workflows`; everything the probe writes is public. Items 2 and 4-9 are covered by one run.
+
+### Issue field and issue type write payloads, read 2026-10-11
+
+Sources: `github/rest-api-description` `api.github.com.2026-03-10.json` (raw), `github/docs`
+`data/reusables/rest-api/additional-permissions.md` and
+`src/github-apps/data/fpt-2026-03-10/server-to-server-permissions.json`.
+
+| Topic | Finding |
+|---|---|
+| Set a field value | `POST` (add) and `PUT` (replace all existing values) `/repos/{owner}/{repo}/issues/{n}/issue-field-values`, body `{"issue_field_values": [{"field_id": <integer>, "value": ...}]}`, at most 25 items. Single-select takes the option name as a string, which "must match an existing option name"; number takes a number; date an ISO 8601 string. `POST` with an empty array clears all values. Responses 200, 400, 403, 404, 422, 503. 403 without push access. "Creating content too quickly ... may result in secondary rate limiting"; the call triggers notifications |
+| Field id | Writes take `field_id` (integer), not the name. `GET /orgs/{org}/issue-fields` returns `id`, `name`, `data_type`, `visibility` and `options` (each with `id`, `name`); its permission key is `issue_fields` (read), server-to-server true, no additional permissions |
+| Issue update | `PATCH /repos/{o}/{r}/issues/{n}` accepts `issue_field_values` and `type` in the same body. `type` is a name or an object `{value, rationale, suggest, confidence}`; with `suggest: true` "the change is stored as a pending suggestion for human review rather than applied directly"; `confidence` is `low`, `medium` or `high`. Without push access "type changes are silently dropped" |
+| Additional permissions column | "Some endpoints require more than one permission. Other endpoints work with any one permission from a set of permissions", marked with a checkmark; the endpoint page has the detail. Field-value `POST`, `PUT`, `DELETE` carry it and are listed under both `issues` and `pull_requests` |
+
+Implications (inference):
+
+- `GITHUB_TOKEN` is limited to the repository of the workflow and `issue_fields` is not a workflow
+  `permissions:` key as far as section 5 recorded; resolving the Priority field id by name probably
+  needs an App token with `issue_fields: read`. The id can instead come from a caller variable, set
+  once from `gh api orgs/becloud-dev/issue-fields`.
+- Triage writes values with `POST`, not `PUT`, so other fields are not replaced.
+- The listing under both `issues` and `pull_requests` reads as "either permission suffices", since
+  an issue number can be a pull request; not confirmed on the endpoint page.
+- `suggest` gives a native review path for an AI-chosen type; its effect (what the owner sees and
+  does) is unread.
+
+Unverified: `GITHUB_TOKEN` writing field values (live item 2); whether `issue_fields` can be
+requested in a workflow `permissions:` block; what a pending type suggestion looks like and how it
+is accepted.

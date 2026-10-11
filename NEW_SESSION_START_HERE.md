@@ -7,7 +7,7 @@ confirmation postponed.
 
 ## Resume here (first command: `git log --oneline`)
 1. Recorded, no go pending: section 4 Round 4; section 5 "Live confirmations before triage".
-2. Read the reachable REST docs: `issue-field-values` payload, `type` on issue update.
+2. REST payloads for field values and `type` are recorded (section 5, last subsection).
 3. Triage round: questions (start on `triage` label vs `opened`, missing-information
    handling, sub-issue loop-back), then the draft shown before any write.
 
