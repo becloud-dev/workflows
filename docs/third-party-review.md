@@ -406,8 +406,12 @@ happens when a template names a label that does not exist in the repo (#17).
 - Accepted consequence: others may use, sell and host the work commercially.
 - Contributions arrive under the repository license (GitHub Terms of Service, "Contributions
   Under Repository License", "inbound=outbound"); no CLA.
-- Not decided: who may start an AI run; subscription auth on a public project; replacement of
-  option C by native gates; a monitoring and metrics stage.
+- Who may start an AI run: only the code owner, through a label or comment that needs write
+  access (user, 2026-10-11). The community creates issues and reviews the AI's work in the open.
+- Subscription auth stays (`claude_code_oauth_token`) under that gate, and Anthropic is asked to
+  confirm in writing that it fits the terms (user, 2026-10-11). Until the answer arrives the
+  question stays open. A fallback is an API key or Bedrock.
+- Not decided: replacement of option C by native gates; a monitoring and metrics stage.
 
 ### AI-generated output and copyright (read 2026-10-11)
 
