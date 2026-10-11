@@ -1549,6 +1549,36 @@ Not covered: the runner's jq build (`1.7.1-3ubuntu0.24.04.2`) against upstream; 
 behaviour for `-F milestone=N`, the milestone POST and `issue_field_values`; the model's output
 against `--json-schema`; the dispatch boolean passed through `with:`.
 
+### Live results: roadmap planner dry run (2026-10-11)
+
+Run `38179661635` on `becloud-dev/triage-sandbox`, `workflow_dispatch` with `apply=false`,
+caller `542a064`, reusable workflow at `workflows` `main` `82d3ec2`, model `claude-sonnet-5-5`,
+literals `release_days` 14, `max_issues` 8, `max_releases` 3, `bug_budget` 0.30.
+
+| Check | Result |
+|---|---|
+| Steps | build, plan, validate, report, record, upload success; apply skipped |
+| Input | 14 open issues; 8 ranked (#1, #5, #7 Urgent; #2, #4 High; #6, #8, #12 Medium); 5 unprioritised (#9, #10, #11, #13, #14); #3 excluded by `needs-info`; Bug share 0.583, hold true; first version `v0.1.0` |
+| Plan | new milestone 1: #1, #5, #2, #7 (Export button and checkout); new milestone 2: #4, #6 (accented search, print icon); held #8, #12; unplanned none; all three Urgent issues in milestone 1 |
+| Validate | passed on the live plan |
+| Quoted evidence | 7 of 7 quotes in the plan `reason` strings found in the issue titles and bodies |
+| End state | issues #1 to #14 and milestones (0) identical to the baseline taken before the run |
+| Run record | cost $0.0985 (sonnet $0.0984), 4 turns, 8.6 s, `permission_denials_count` 0 |
+
+Confirmed live: the dispatch boolean passed through `with:` to the called boolean input reached
+the job as `false` and skipped the apply step; a `--json-schema` `target` of `"new"` was accepted;
+the shell-enforced hold held both Features.
+
+Interpretation (inference): the three duplicate Export bugs (#1, #5, #2) were grouped and the
+shared root cause was flagged in `summary`; the `held` reasons are a bare "error budget", which
+adds nothing because the shell decides the hold. The run record lists a `claude-haiku-5-5` usage
+entry (1,228 input tokens, $0.0001) although the caller sets only sonnet; the source is not
+established.
+
+Not covered: `apply=true` on real GitHub (`-F milestone=N`, the milestone POST, the read-back);
+an integer `target` against an existing milestone; the hold test with a budget above the share;
+the validate abort on a live bad plan.
+
 ### Queued after stage 2b
 
 Issue type `Project` (org level; triage splits it into sub-issues), the issue form
