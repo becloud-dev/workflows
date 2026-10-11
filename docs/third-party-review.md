@@ -1,6 +1,6 @@
 # Shared workflows: flow and third-party review
 
-Status: draft, 2026-10-11. Nothing in the review table has been read yet; the URLs were only
+Status: draft, 2026-10-11. Items read so far are recorded in section 5; the others were only
 checked to resolve (HTTP 200).
 
 Constraint: the shared workflows are framework-agnostic and rely on GitHub capabilities only. No
@@ -75,6 +75,7 @@ Stage numbers follow section 1.
 | 19 | Model choice (haiku/sonnet/opus) | https://platform.claude.com/docs/en/about-claude/models/overview | Current model IDs, limits, cost per tier | 1-5 |
 | 20 | `gh` CLI | https://cli.github.com/manual/gh_issue_create | Support for `--parent` and `--type`; which flags are stable | 1, 5 |
 | 21 | Release tooling (consumer side, optional) | https://github.com/googleapis/release-please and https://www.conventionalcommits.org/en/v1.0.0/ | Language-agnostic? Setup without a manifest | 5 |
+| 22 | Bedrock path (later) | https://code.claude.com/docs/en/github-actions-cloud-providers and the Amazon Bedrock fine-tuning docs | OIDC setup, custom App fit, model IDs, whether fine-tuning is offered for the 5.5 models and what it needs | 1-5 |
 
 Review order:
 
@@ -83,6 +84,7 @@ Review order:
 2. Core data model: #6, #7, #9, #10.
 3. AI execution: #18, #19, #15.
 4. Packaging and consumer contract: #1-#3, #16, #17, #20, #21.
+5. Bedrock path, after the subscription flow works: #22.
 
 ## 4. Open decisions
 
@@ -256,3 +258,48 @@ Unverified: how a Claude step writes to Projects v2 with the App token; whether 
 path needs `id-token: write`; the current major of `create-github-app-token` (the setup page
 pins `@v1`); model IDs in the docs examples are inconsistent (`claude-opus-5-5`,
 `claude-sonnet-5`), settled in #19. `docs/usage.md` and `docs/faq.md` not read.
+
+### Model choice and billing (#19, #15), read 2026-10-11
+
+Sources: `platform.claude.com/docs/en/about-claude/models/overview`,
+`code.claude.com/docs/en/model-config` (first 100000 of 116497 characters),
+`code.claude.com/docs/en/costs`, and GitHub billing pages for Actions (through a page
+summarizer). Plan limits for Pro also came from third-party guides, second-hand.
+
+| Tier | Claude API ID | Bedrock ID | Retirement, not sooner than |
+|---|---|---|---|
+| Haiku 5.5 | `claude-haiku-5-5` | `anthropic.claude-haiku-5-5` | 2027-10-07 |
+| Sonnet 5.5 | `claude-sonnet-5-5` | `anthropic.claude-sonnet-5-5` | 2027-09-28 |
+| Opus 5.5 | `claude-opus-5-5` | `anthropic.claude-opus-5-5` | 2027-09-22 |
+| Fable 5.1 | `claude-fable-5-1` | `anthropic.claude-fable-5-1` | 2027-09-01 |
+
+- Every ID is a pinned snapshot. The Action docs example `--model claude-sonnet-5` is a legacy ID.
+- Aliases differ by provider: on Bedrock `sonnet` maps to Sonnet 4.5 and `haiku` to Haiku 4.5,
+  against 5.5 on the Anthropic API. Full IDs are pinned, aliases are not used.
+- Thinking cannot be turned off on the three 5.5 models; `--effort` sets low to max.
+- Fable is never a default and can bill to usage credits.
+- Pro: rolling five-hour window plus weekly window, shared with claude.ai (third-party guides,
+  numbers not published). A run at the limit is not documented for the Action.
+- CI usage does not appear in `/usage`, which reads local session history.
+- GitHub Actions on a Free org, private repos: 2,000 minutes per month, rounded up to the whole
+  minute per job, blocked at quota when no payment method is on file. Linux 2-core x64 is
+  $0.006 per minute above quota. Minutes are charged to the repository owner.
+
+### Decisions: runtime and provider (2026-10-11)
+
+- Authentication through the Claude subscription (`claude_code_oauth_token`, Pro now, Max 5x
+  later if needed). The user reports Opus, Sonnet and Haiku 5.5 are available on that plan.
+- Usage credits stay off. The Pro allowance is the hard ceiling for CI. If credit-billed or API
+  usage is needed, the move is to Bedrock, not turning credits on.
+- Fable is not used while it needs credits.
+- Bedrock is the later target, for fine-tuning and usage tuning. Whether fine-tuning is offered
+  for the 5.5 models is not verified (#22).
+- The shared workflows take the provider and the model per stage as caller inputs, with the
+  subscription as default. Nothing provider-specific is hardcoded in the shared repo.
+- No jobs that exist only to check a label: fold gate checks and triage into one job where
+  possible, since each job rounds up to a minute.
+
+Unverified: behaviour of a run at the Pro limit; whether an existing OAuth token keeps working
+after a plan change; real tokens and minutes per run (needs a measured run); the last 16497
+characters of the model-config page; reusable-workflow billing across repos (not stated, same
+org so one owner).
