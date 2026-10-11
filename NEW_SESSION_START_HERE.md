@@ -39,12 +39,11 @@ go, write, commit locally. First command: `git log --oneline`.
 - Not answered: engine, state in labels + milestones + Projects, planner trigger, which
   patagonia pieces to keep, release mechanism (section 4, rounds 1 and 2).
 - Diagram ambiguities: DEV (haiku) executing the plan; whether the AI merges.
-- Not verified: Access setting selectable on a Free org (needs the repo to exist); `vars` in
-  `with:` (docs prose and table disagree) and inside a called workflow; `actions: write` for
-  dispatch; Issue Types and Variables App permissions have no token key or action input.
-- Not verified: `gh pr create` in automation mode; Projects v2 writes from a Claude step;
-  behaviour at the Pro limit; OAuth token after a plan change; real tokens and minutes per run;
-  fine-tuning on Bedrock for the 5.5 models.
+- Not verified: Access setting on a Free org (needs the repo); `vars` in `with:` (docs prose and
+  table disagree) and in a called workflow; `actions: write` for dispatch; Issue Types and
+  Variables App permission keys; `gh pr create` in automation mode; Projects v2 writes from a
+  Claude step; behaviour at the Pro limit; OAuth token after a plan change; real tokens and
+  minutes per run; fine-tuning on Bedrock for the 5.5 models.
 - Not read: #16, #17, #20, #21, #22; `docs/usage.md` and `docs/faq.md` of the action; the last
   16497 characters of the model-config page.
 
