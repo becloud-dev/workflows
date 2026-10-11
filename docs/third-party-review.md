@@ -700,3 +700,49 @@ resolves to the repository of the file it appears in, at the running commit, wit
 and no `@ref`; not on GHES. Fallback: `becloud-dev/workflows/.github/actions/<name>@<ref>`.
 Unverified: `$/` from a reusable workflow called cross-repo on a hosted runner; the release
 date and minimum runner version (2.336.0) came from a search result, not read raw.
+
+### Stage design inputs, read 2026-10-11
+
+Sources: `bentoluizv/patagonia-trip` through `gh api` (`CONTRIBUTING.md`,
+`.github/pull_request_template.md`, `.github/workflows/{claude-issue-review,claude-pr-review,
+release,pr-title}.yml`, `.github/claude/{issue-review,pr-review}.md`); raw `github/docs`
+(`about-issue-fields.md`, `managing-issue-fields-in-your-organization.md`,
+`adding-and-managing-issue-fields.md`, `events-that-trigger-workflows.md`,
+reusable `actions-do-not-trigger-workflows.md`, `about-code-owners.md`,
+`managing-github-actions-settings-for-a-repository.md`, `adding-items-automatically.md`,
+`src/github-apps/data/fpt-2026-03-10/server-to-server-permissions.json`); raw
+`platform.claude.com` model overview and pricing.
+
+| Topic | Finding |
+|---|---|
+| Patagonia engine | Issue review: `issues` `opened` and `labeled` (label `claude`, removed at the end), skipped when `sender.type == 'Bot'`, `concurrency` per issue number, `timeout-minutes: 15`, `claude-code-action@v1` with `claude_code_oauth_token`, `track_progress: true`, `--model` and `--allowedTools`/`--disallowedTools` in `claude_args`. The prompt only says "read and follow `.github/claude/issue-review.md`" |
+| Patagonia PR review | `issue_comment` beginning `@claude review`, `timeout-minutes: 25`, opus. A release PR (head `release-please--*`) is reviewed over `git describe --tags --abbrev=0 HEAD...HEAD`. Normal PRs are not reviewed by Claude unless the owner asks |
+| Patagonia gates | A cross-layer issue gets an Options section and code starts after the owner's `Decisão:` comment; a plan the owner approves comes before code for a new entry point, a migration, 3 or more hand-written files, or any change under `.github/workflows/`. Both are prose and local Plan Mode, not workflow logic. A `release-blocker` issue open makes the deploy job fail |
+| Patagonia has no | Planner, UX/UI research or DEV workflow. Implementation runs in a local Claude Code session; stage 4 of section 1 has no source to port |
+| Patagonia release | `release-please-action@v4` on push to `main`; merging the release PR tags and deploys; `pr-title` uses `amannn/action-semantic-pull-request@v6` with the same type list |
+| Issue fields | Org-level, up to 25; types single-select, text, number, date; defaults Priority (Urgent, High, Medium, Low), Effort, Start date, Target date, all editable. Settable from the sidebar, projects, the API or Actions; not from templates or URL prefill; issues only, not pull requests. Docs feature flag `issue-fields` is `fpt: '*'` |
+| Issue field events | `issues` types `field_added` (set or changed) and `field_removed` (cleared) start workflows |
+| Issue field API | `PUT`/`POST`/`DELETE /repos/{o}/{r}/issues/{n}/issue-field-values`, `GET` the same; `GET`/`POST`/`PATCH`/`DELETE /orgs/{org}/issue-fields`. Values need `issues: write` (and `pull_requests: write` is also listed); the endpoint rows carry `additional-permissions: true`, meaning not read. Field definitions have their own `issue_fields` permission, read or write |
+| Other permissions | `POST .../dispatches` needs `actions: write`; merge a pull request needs `contents: write`; create a pull request and create a review need `pull_requests: write` |
+| PR creation by token | The repository setting "Allow GitHub Actions to create and approve pull requests" governs whether `GITHUB_TOKEN` can create and approve; new organization repos inherit the organization setting |
+| Code owners | "Individuals or teams", with write access; a user or team without it is not assigned |
+| Projects on Free | Built-in auto-add workflows: 1 per project on the Free plan; 50 fields per project, issue fields included |
+| Prices (API, per MTok) | Haiku 5.5: $0.10 input, $0.50 output up to a 100,000-token prompt; $0.50 and $2.50 above it. Sonnet 5.5: $2 and $10. Opus 5.5: $4 and $20. Fable 5.1: $10 and $50 |
+
+Implications (inference):
+
+- Priority can be an issue field instead of a Projects field: it is writable with the same
+  token as labels, and a change to it can start a workflow. Section 2's mapping row "Priority,
+  backlog / planned / in progress: Projects v2 single-select fields" is superseded for priority if
+  the field exists on the Free org.
+- Backlog order is a saved search over the Priority field; no AI run is needed to sort.
+- A bot cannot satisfy a required code-owner review, since it cannot be listed as a code owner.
+- Reusable stage workflows can be chained with `workflow_dispatch` using `actions: write`;
+  other `GITHUB_TOKEN` events do not chain.
+- Haiku's price advantage shrinks above 100,000 prompt tokens, which long agentic runs may reach.
+
+Unverified: issue fields on a Free organization (docs convention `fpt`, needs the org settings
+page); the meaning of `additional-permissions: true`; whether an approval by `GITHUB_TOKEN`
+counts toward a code-owner requirement; whether native auto-merge works on a Free public repo;
+`vars` inside a called workflow (the contexts page states nothing); how a called workflow locates
+its own repository for a second checkout; Haiku 5.5 behaviour as executor (no measured run).
