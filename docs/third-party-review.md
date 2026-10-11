@@ -1453,3 +1453,29 @@ Unverified: the `categorize` path (no miscategorized issue on the sandbox; the e
 exercises nothing); the build step on jq 1.7.1 outside the runner; pagination past 100 issues
 live; the abort of the validate step on a bad model `order` on the runner (tested only on jq);
 `sub_issues` use by the model; order quality on real issues.
+
+Retest after `65ad6c6` (the duplicate rule), run `38177887110`, `workflows` `7c4e9fb`: success;
+4 turns, 25s, `total_cost_usd` 0.00389, `permission_denials_count` 0. Same input and same order
+as `38177571900`. The `#5` gap evidence now reads: "Priorities differ: #2 is High and #5 is
+Urgent; neither was changed." The two creation times cited match the input, and the 19 quoted
+strings appear verbatim in the issue text. Issues #1 to #14 identical to the baseline. Not asked
+for by the prompt: each `reason` begins with the tier name. One run: the rule fires, its
+reliability is not measured. `categorize` is still empty.
+
+### Decision: stage 2a closed (user, 2026-10-11)
+
+Stage 2a is closed on the sandbox at `workflows` `7c4e9fb`, scope as in Round 4 item 1 and
+the stage 2a decisions above. Tests stay on `becloud-dev/triage-sandbox`; the quality of the
+order on real issues is checked when the full flow runs on a real project. Work continues with
+stage 2b.
+
+Gaps carried forward (recorded, not closed):
+
+| Gap | Why it matters | What would close it |
+|---|---|---|
+| `categorize` path never exercised | an empty result on this data proves nothing about type review | one deliberately miscategorized issue in the sandbox, then a dispatch |
+| No age or `stale` rule | the model has no clock; an old issue is not flagged | `generated_at` in `backlog.json` and a threshold chosen by the user |
+| Build step on jq 1.7.1 outside the runner | the one failure of this stage came from a jq version mismatch | run the `run:` blocks with jq 1.7.1, or accept the runner as the only test |
+| Pagination past 100 issues and the cap, live | the cap and `--paginate --slurp` ran only on a fixture | a sandbox with more than 100 open issues, or a fixture-only acceptance |
+| Validate abort on a bad model `order`, on the runner | the `jq` was tested locally only | a forced bad order in a sandbox run |
+| `sub_issues` use by the model; order quality on real issues | verdicts were read on issues written for the test | run on a real project later, as decided |
