@@ -182,7 +182,7 @@ jobs:
       - name: Record the run
         if: always()
         id: record
-        uses: becloud-dev/workflows/.github/actions/record-run@main
+        uses: $/.github/actions/record-run
         with:
           execution_file: ${{ steps.claude.outputs.execution_file }}
           stage: triage
