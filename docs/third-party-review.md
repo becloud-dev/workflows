@@ -165,6 +165,24 @@ Round 4 (user, 2026-10-11; recommended answers accepted by "Go"):
    credentials) at `job.workflow_repository` and `job.workflow_sha`; the prompt says to read
    `.ai-workflows/prompts/<stage>.md`. No consumer override.
 
+Round 5 (user, 2026-10-11; recommended answers accepted by "Go"), stage 1 triage:
+
+1. Start: only the owner applying the `triage` label starts a run; no run on `opened`. The
+   sender is checked against the owners variable.
+2. Priority field: its id comes from the variable `PRIORITY_FIELD_ID`, passed through the
+   caller's `with:`. Stage 1 uses no App; writes use `GITHUB_TOKEN`.
+3. Claude step: read-only tool allowlist; returns a JSON verdict. A workflow step performs the
+   writes with `GITHUB_TOKEN`.
+4. Type: applied directly, with the rationale in the comment. No `suggest`.
+5. Missing information: a numbered comment and the new label `needs-info`; `triage` is removed
+   and the owner re-applies it after the answer.
+6. Format fix: the issue body is edited and a one-line comment says what changed.
+7. Split: sub-issues are created with `--parent`; the owner applies `triage` to each.
+8. One run makes one haiku call covering both diagram steps (classification and split check).
+9. Priority options: the org field keeps GitHub's defaults, Urgent, High, Medium, Low (rank by
+   option `priority` 1 to 4). Amends Round 3 item 2 and Round 4 item 3: no `P1` to `P5`, no
+   fallback labels. The criticality description per option is defined in the triage prompt.
+
 ## 5. Findings
 
 ### Hard blockers (#4, #5, #8, #11-#14), read 2026-10-11
