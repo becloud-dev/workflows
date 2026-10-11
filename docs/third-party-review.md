@@ -1535,7 +1535,7 @@ open milestone with 5 open issues, tags `v0.2.0`, `v0.3.1`, `latest`. Scratchpad
 |---|---|
 | Build | 7 candidates, 6 ranked by tier then age, 1 unprioritised; `needs-info`, milestoned and PR items excluded; share 0.625; `next_minor` `[0,4,0]` from the tag `v0.3.1`; capacity 3 on the existing milestone |
 | Validate | 2 valid plans pass; 10 rejected plans exit 1 (missing, duplicate and unknown issue, 4 new milestones, over capacity, target not open, held without hold, Feature planned, Feature unheld, non-Feature held) |
-| Apply | new milestones titled `v0.4.0`, `v0.5.0`, due today + 14 and + 28 days; existing target takes PATCH only; a dropped PATCH aborts on the read-back with exit 1 |
+| Apply | new milestones titled `v0.4.0`, `v0.5.0`, ~~due today + 14 and + 28 days~~ (due dates unverified: the local `date` is uutils 0.10.0, not GNU; see "Live results: roadmap planner apply run"); existing target takes PATCH only; a dropped PATCH aborts on the read-back with exit 1 |
 | Report | sections render from `plan.json` and the input |
 
 Earlier run on `ce96acf`: the build failed on the label filter (`.name` read on mapped label
@@ -1578,6 +1578,33 @@ established.
 Not covered: `apply=true` on real GitHub (`-F milestone=N`, the milestone POST, the read-back);
 an integer `target` against an existing milestone; the hold test with a budget above the share;
 the validate abort on a live bad plan.
+
+### Live results: roadmap planner apply run (2026-10-11)
+
+Run `38179936884` on `becloud-dev/triage-sandbox`, `apply=true`, caller `542a064`, workflows
+`main` `82d3ec2`. Result: failure in the apply step.
+
+| Check | Result |
+|---|---|
+| Plan, validate | success; plan as in the dry run in 2 new milestones, #8 and #12 held |
+| Apply, milestone 1 | POST created `v0.1.0` (number 1) with `due_on` `2026-10-11T00:00:00Z`, expected `2026-10-25`; PATCH and read-back held for #1, #5, #2, #7 |
+| Apply, milestone 2 | `date: invalid date 'today 00:00:00 + 28 days'`, exit 1; `v0.2.0` not created, #4 and #6 unassigned |
+| Report | ran after the failure; header read "applied" |
+
+Cause (verified in the log for milestone 2; milestone 1's stored value is not explained): the
+GNU manual (Coreutils 9.12, "Time of day items") reads `+N` after a time of day as a time zone
+correction with a 24-hour maximum, so `+ 28` is invalid and `+ 14` was read as a zone, not days.
+The local fixture check ran on uutils `date` 0.10.0, which accepts the string and returned the
+expected dates; it did not exercise the runner's `date`.
+
+Fix `1c04177`: due dates from epoch arithmetic (`today_midnight + k * release_days * 86400`).
+Unverified: that GNU date on the runner accepts `-d "@N"` (docs page fetch failed twice).
+
+Bug class: implementation-specific parsing of a free-form string; the check that would have
+caught it is running the block on the runner's `date`.
+
+Confirmed live: `issues: write` through the caller, the milestone POST, `-F milestone=N` and
+the read-back (4 of 4 held); a failed apply leaves milestones and assignments in place.
 
 ### Queued after stage 2b
 
