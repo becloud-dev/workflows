@@ -591,3 +591,37 @@ Unverified: behavior of `--type` when the organization has no types; prompts wit
 `--title` or `--body` is missing (the logic is at `create.go:135`, not run); `--project` with an
 App token; the repository setting "Allow GitHub Actions to create and approve pull requests"
 for `gh pr create` under `GITHUB_TOKEN` (not read).
+
+### Release tooling (#21), read 2026-10-11
+
+Sources: raw `googleapis/release-please` (README, `src/strategies/simple.ts`,
+`src/strategies/base.ts`, `src/versioning-strategies/default.ts`, `src/commit.ts`; release
+v17.11.2, 2026-08-24), raw `googleapis/release-please-action` README (v5.0.0, 2026-04-22), raw
+`conventional-commits/conventionalcommits.org` spec v1.0.0.
+
+| Topic | Finding |
+|---|---|
+| Scope | Parses Conventional Commits, keeps a Release PR up to date; on merge it updates the changelog, tags and creates a GitHub Release. "It does not handle publication to package managers" |
+| Language | Release types include `simple` ("a version.txt and a CHANGELOG.md"); language-specific ones need their own files |
+| Without a manifest | The action takes `release-type` inline; "allows for no further customization". `release-please-config.json` and `.release-please-manifest.json` are the advanced path |
+| `simple` source | `CHANGELOG.md` is created if missing; `version.txt` is updated with `createIfMissing: false`, so the file must exist |
+| Versioning | Breaking: major (minor pre-1.0 with `bumpMinorPreMajor`); `feat`: minor; anything else: patch. `Release-As: x.y.z` in a commit body forces the version. Squash-merge is "highly" recommended |
+| Release PR trigger | README: releasable units are `feat`, `fix`, `deps`; `chore` and `build` are not |
+| Labels | `autorelease: pending`, `tagged`, `snapshot`, `published` (the last is a convention, not set automatically) |
+| Token | Default `GITHUB_TOKEN`: PR, tag and release it creates "will not trigger future GitHub actions workflows"; a PAT is documented for CI on release PRs |
+| Permissions | `contents: write`, `issues: write`, `pull-requests: write`; "Allow GitHub Actions to create and approve pull requests" may be needed |
+| Spec | Only `feat` and `fix` are defined; other types MAY be used; breaking is `!` before the colon or footer `BREAKING CHANGE:`; footers case-insensitive except `BREAKING CHANGE` |
+
+Implications (inference):
+
+- The release PR must be created with an App token (same identity as #5), not `GITHUB_TOKEN`, so
+  checks run on it and the code owner can approve it under the native gate.
+- A docs-only repo needs a committed `version.txt`; the release PR then edits `version.txt` and
+  `CHANGELOG.md`.
+- The git-workflow rule's "`perf`, `refactor`, `revert`: patch" may not produce a release PR on
+  its own, if the README's releasable-unit list is accurate. Test before relying on it.
+
+Unverified: which commit types alone create a release PR (`postProcessCommits` and the
+manifest commit filter not read); behavior of an App token for release PR checks (documented
+for a PAT only); that the action major `@v5` is the current one for new setups (latest release
+tag, not the setup text).
