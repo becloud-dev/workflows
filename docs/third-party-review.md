@@ -1606,6 +1606,40 @@ caught it is running the block on the runner's `date`.
 Confirmed live: `issues: write` through the caller, the milestone POST, `-F milestone=N` and
 the read-back (4 of 4 held); a failed apply leaves milestones and assignments in place.
 
+### Live results: roadmap planner apply run, second attempt (2026-10-11)
+
+Run `38180319305` on `becloud-dev/triage-sandbox`, `apply=true`, workflows `main` `a455c07`
+(fix `1c04177`), after a sandbox reset to the dry-run baseline. Result: success.
+
+| Check | Result |
+|---|---|
+| Steps | plan, validate, apply, report, record success |
+| Plan | milestone 1: #1, #5, #7, #2, #4; milestone 2: #6; held #8, #12; unplanned none (grouped differently from the dry run) |
+| Apply | milestones number 2 `v0.1.0` and number 3 `v0.2.0`, descriptions from the themes; `-F milestone=N`, the milestone POST and the read-back held for 6 of 6; GNU `date -d "@N"` accepted on the runner |
+| Quoted evidence | 7 of 7 quotes found in the issue titles and bodies |
+| End state | against the pre-run baseline only the `milestone` field changed, on 6 issues |
+| Run record | cost $0.0145, `permission_denials_count` 0 |
+| Due dates | stored `2026-10-24` and `2026-11-07`, one day earlier than sent (`2026-10-25`, `2026-11-08` at `T00:00:00Z`) |
+
+Probe (2 throwaway milestones created, read back and deleted; numbers 4 and 5):
+
+| Sent `due_on` | Stored `due_on` |
+|---|---|
+| `2026-10-25T00:00:00Z` | `2026-10-24T00:00:00Z` |
+| `2026-10-25T12:00:00Z` | `2026-10-25T00:00:00Z` |
+
+Source: REST docs "Create a milestone" and "Update a milestone" (read 2026-10-11), which say only
+that `due_on` is an ISO 8601 timestamp. Interpretation (inference from two data points): GitHub
+stores the date as a calendar date in a zone west of UTC and not further west than UTC-12; the
+exact zone is not established.
+
+Fix `5a594e8`: due dates sent at noon UTC. Bug class: an API that normalises a timestamp to a
+calendar date in a zone its docs do not state; the check that would have caught it is a live
+read-back of `due_on` after the first create.
+
+Open: the fix is untested live; the report header still reads "applied" after a failed apply
+(seen in run `38179936884`); the hold test and the forced bad plan are not run.
+
 ### Queued after stage 2b
 
 Issue type `Project` (org level; triage splits it into sub-issues), the issue form
