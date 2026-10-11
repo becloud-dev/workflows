@@ -1412,3 +1412,44 @@ Gaps carried forward (recorded, not closed):
 
 Not part of stage 1: issue #1 and PR #2 (zizmor in CI) are parked; the check ran green on the
 branch (run `38176419903`) and nothing is merged.
+
+### Live results: backlog planner, stage 2a (2026-10-11)
+
+Files: `.github/workflows/planner-backlog.yml` (`9515b68`, fix `83628bb`),
+`prompts/planner-backlog.md` (`0736640`); caller `triage-sandbox` `af45e53`. Trigger
+`workflow_dispatch`; one haiku call; `Read` only; job `issues: read`; report in the job summary
+and the artifact `planner-backlog-<run>-<attempt>`.
+
+| Run | Result |
+|---|---|
+| `38177471382` | failed in 9s at "Build the backlog input", exit 3, before the model call. jq: `syntax error, unexpected '>', expecting '}'` at `truncated: (...) > 100`, an unparenthesised comparison as an object value. The runner image `ubuntu-24.04` has jq `1.7.1-3ubuntu0.24.04.2` (raw `actions/runner-images` `Ubuntu2404-Readme.md`); the local test had run jq 1.8.1, which accepted the line. The run record and artifact steps still ran, and `$/` resolved to `becloud-dev/workflows/.github/actions/record-run@0736640` |
+| `38177571900` | success in 51s after `83628bb`. Input: `total` 13, `truncated` false, ranked `[1,5,7,2,4,6,8,12]`, unprioritised `[9,10,11,13,14]` (equal to the count computed from the baseline). Validate passed. Record: haiku, 3 turns, 24s, `total_cost_usd` 0.00715 (`costBasis: list`), `permission_denials_count` 0, `is_error` false |
+
+Output of `38177571900`:
+
+- Order, tiers kept: `#7, #1, #5` (Urgent), `#2, #4` (High), `#8, #12, #6` (Medium); inside Urgent
+  the model moved `#7` ahead of the older `#1` and `#5`.
+- `categorize`: empty. `gaps`: one, `#5` `duplicate` of `#2` (same title, same symptom).
+- All 12 quoted strings in `order[].reason` and `gaps[].evidence` appear verbatim in the issue
+  titles or bodies (script check).
+- Issues #1 to #14 compared before and after on type, Priority, labels, milestone, comment count,
+  `updated_at` and body length: identical.
+
+Interpretation (inference):
+
+- The path caller, reusable workflow, prompt checkout, `Read`, structured output, validation and
+  artifact works end to end. It settles that `Read` opens `.planner/backlog.json`, that the owner
+  gate passes under `workflow_dispatch` through `workflow_call`, and that `$/` resolves from a
+  caller on `@main`.
+- `#5` (Urgent) is a duplicate of `#2` (High) and the report did not say so; the prompt gave no
+  place for it. The rule added after this run asks the model to state both priorities in the
+  `duplicate` evidence.
+
+Bug class: a check run on a different tool version than production (local jq 1.8.1, runner
+1.7.1). The check that would have caught it is running the `run:` blocks with the runner
+image's jq, or a CI step that pins the jq used by the local test.
+
+Unverified: the `categorize` path (no miscategorized issue on the sandbox; the empty result
+exercises nothing); the build step on jq 1.7.1 outside the runner; pagination past 100 issues
+live; the abort of the validate step on a bad model `order` on the runner (tested only on jq);
+`sub_issues` use by the model; order quality on real issues.
