@@ -5,16 +5,16 @@
 only. Third-party review items #1-#21 are read and recorded; #22 (Bedrock) is deferred.
 
 ## Resume here
-Section 5 of `docs/third-party-review.md` is the record. Next: a monitoring and metrics stage
-(cost per run, per stage, per model), then the open items below, then the stage design (section 4
-rounds 1 and 2 are partly answered). Follow the research-iterations rule: raw sources, close
+Section 5 of `docs/third-party-review.md` is the record. Next: decide the monitoring record
+(its "Implications" list: `jq` on `execution_file`, job summary, optional artifact), then the open
+items below, then the stage design (section 4 rounds 1 and 2 are partly answered). Follow the research-iterations rule: raw sources, close
 reachable gaps, show the exact text, wait for the go, write, commit locally. First command:
 `git log --oneline`.
 
 ## Git state (2026-10-11T13:41-03:00)
 - Branch `main`, clean tree (verified via `git status -sb`).
 - No remote, no upstream: nothing is pushed.
-- 22 commits including this refresh (verified via `git log --oneline`).
+- 24 commits including this refresh (verified via `git log --oneline`).
 - Probe repos deleted 2026-10-11; the org `becloud-dev` has no repositories yet (verified via
   `gh repo list becloud-dev`).
 
@@ -23,6 +23,7 @@ reachable gaps, show the exact text, wait for the go, write, commit locally. Fir
 - #1-#3 reusable workflows, events, syntax; #16 org default templates and #17 issue forms (both
   tested live); #20 `gh` flags; #21 release-please.
 - Public repository plan features and subscription terms; AI output and copyright (US guidance).
+- Monitoring and metrics sources (cost fields, OTel, run timing, storage places).
 
 ## Decisions (user, 2026-10-11)
 - Framework-agnostic, GitHub-native only; English; Free plan.
@@ -36,13 +37,14 @@ reachable gaps, show the exact text, wait for the go, write, commit locally. Fir
 
 ## Open and unverified
 - To send: the question to Anthropic on subscription OAuth for a public project (drafted).
-- Not decided: monitoring and metrics stage; engine, state model, planner trigger, which
+- Not decided: monitoring record design; engine, state model, planner trigger, which
   patagonia pieces to keep (section 4); DEV (haiku) executing the plan; whether the AI merges.
 - Not verified: ruleset rule types on Free public repos; `vars` in `with:`; `gh pr create` in
   automation mode; Projects v2 writes from a Claude step; App-token checks on release PRs; which
-  commit types alone create a release PR; behaviour at the Pro limit; tokens and minutes per run;
-  fine-tuning on Bedrock for the 5.5 models.
-- Not read: #22; `docs/usage.md` and `docs/faq.md` of the action; Brazilian copyright law.
+  commit types alone create a release PR; behaviour at the Pro limit; OAuth run fills
+  `total_cost_usd` and token fields; billing endpoints on a public Free repo; fine-tuning on
+  Bedrock for the 5.5 models.
+- Not read: #22; Brazilian copyright law.
 
 ## Pointers
 - `docs/third-party-review.md`: flow, mapping, 22-item review list, findings, decisions.

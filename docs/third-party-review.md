@@ -625,3 +625,49 @@ Unverified: which commit types alone create a release PR (`postProcessCommits` a
 manifest commit filter not read); behavior of an App token for release PR checks (documented
 for a PAT only); that the action major `@v5` is the current one for new setups (latest release
 tag, not the setup text).
+
+### Monitoring and metrics, read 2026-10-11
+
+Sources: `anthropics/claude-code-action` at commit `1d6de8c` (`action.yml`,
+`base-action/src/run-claude-sdk.ts`, `base-action/src/execution-file.ts`,
+`src/entrypoints/run.ts`, `src/entrypoints/update-comment-link.ts`,
+`src/entrypoints/format-turns.ts`; `docs/usage.md` and `docs/faq.md` now read, no cost content);
+`code.claude.com/docs/en/{costs,monitoring-usage,analytics,headless,github-actions}.md` and
+`.../agent-sdk/cost-tracking.md` (raw markdown); `github/rest-api-description` OpenAPI
+(`api.github.com.json`); `github/docs` raw `content/` files for billing, workflow commands,
+limits and Projects.
+
+| Topic | Finding |
+|---|---|
+| Action outputs | `conclusion`, `execution_file`, `branch_name`, `github_token`, `structured_output`, `session_id`. No cost or token output |
+| Execution file | `claude-execution-output.json` in `RUNNER_TEMP`: the full SDK message array, last element is the `result` message. Contains tool results, so not uploaded raw |
+| Default log | Sanitized: `duration_ms`, `num_turns`, `total_cost_usd`, `permission_denials_count`, and `modelUsage` reduced to `contextWindow` and `maxOutputTokens` (token usage and cost per model are hidden on purpose). `show_full_output: true` prints everything and is unsafe on public logs |
+| Step summary | `display_report` default `"false"`; when on, `format-turns.ts` renders per-turn token usage and `Cost` and `Duration` |
+| Tracking comment | `update-comment-link.ts` reads `total_cost_usd`, `duration_ms`, `duration_api_ms` from the last element of the execution file |
+| Cost meaning | `total_cost_usd` and `costUSD` are client-side estimates from a bundled price table, "not authoritative billing data"; `-p` JSON output carries the same; a resumed session reports the conversation total |
+| Subscription | Docs: the `/usage` session cost "isn't relevant for billing" for Pro and Max, and is computed locally at list price. Nothing states that an OAuth run omits it |
+| OpenTelemetry | `CLAUDE_CODE_ENABLE_TELEMETRY=1`; metrics `claude_code.cost.usage` (USD) and `claude_code.token.usage` (by `type`, `model`); exporters `otlp`, `prometheus`, `console`, `none`; `console` writes to stderr under `-p`. Needs a collector to be useful |
+| Analytics | Teams and Enterprise dashboards, the Console dashboard and the Analytics API do not cover an individual Pro or Max subscription |
+| Run and job timing | `GET /repos/{o}/{r}/actions/runs/{id}/jobs` and `.../jobs/{id}` return `started_at`, `completed_at`, per-step times, `runner_name`, `labels`, `run_attempt` |
+| Billable minutes | `GET .../runs/{id}/timing` (`billable.UBUNTU.total_ms`, `run_duration_ms`) is marked "closing down" in the OpenAPI text; "billable minutes only apply to private repositories". Org usage report `GET /organizations/{org}/settings/billing/usage` needs the enhanced billing platform and an org admin; summary endpoint is public preview |
+| Public repos | Actions usage is free for public repositories on standard hosted runners (`billing/concepts/product-billing/github-actions.md`); minutes are time, not money, for this org |
+| Job summary | `GITHUB_STEP_SUMMARY`, 1 MiB per step, at most 20 summaries per job, secrets masked; survives as long as the run |
+| Artifacts | `retention-days` 1 to 90, default per repo or org setting; share an allowance with Packages on private repos |
+| Projects v2 | Number and text fields exist; `updateProjectV2ItemFieldValue` takes `{ text }` or `{ number }` and needs an item added first (`addProjectV2ItemById`); token needs `project` scope or an App with Projects permission |
+
+Implications (inference):
+
+- The caller workflow, not the Action, must collect metrics: one `jq` step on `execution_file`
+  that keeps only the `result` message fields (`total_cost_usd`, `duration_ms`, `duration_api_ms`,
+  `num_turns`, `modelUsage`, `usage`) and drops everything else.
+- Minimal GitHub-native design: that record goes to the job summary (always), and to an artifact
+  or a number field only if cross-run totals are wanted. Stage and model come from the caller
+  inputs already decided, so the record carries `stage`, `model`, `run_id`, `issue`.
+- For this study, `total_cost_usd` is a list-price equivalent, which is the useful comparison
+  against Bedrock later; it is not what the subscription charges (nothing per token).
+
+Unverified (needs a live run): whether an OAuth run populates `total_cost_usd` and
+`modelUsage` token fields in the result message; the exact `usage` field names in the result
+message; whether the billing usage endpoints return rows for a public repo on the Free plan;
+Projects v2 writes with an App token from a workflow step; whether `display_report` output
+fits the 1 MiB step limit on long runs.
