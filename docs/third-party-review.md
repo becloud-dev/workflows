@@ -1523,3 +1523,34 @@ implies it; live probe planned); the local jq is 1.8.1, the runner's is 1.7.1.
 6. The model may assign issues into existing open milestones while `open_issues` is below
    `max_issues`; it never edits them.
 7. Defaults: `release_days` 14, `max_issues` 8, `bug_budget` 0.30, `max_releases` 3.
+
+### Local check: roadmap planner on jq 1.7.1 (2026-10-11)
+
+Method: the `run:` blocks of `.github/workflows/planner-roadmap.yml` at `e5ff873` extracted and
+run unchanged against fixtures, `gh` stubbed. jq: upstream `jq-linux-amd64` 1.7.1, SHA-256
+matched the release `sha256sum.txt`. Fixtures: 10 issues (5 Bug, 3 Feature, 1 Task, 1 PR), one
+open milestone with 5 open issues, tags `v0.2.0`, `v0.3.1`, `latest`. Scratchpad only, not kept.
+
+| Step | Result |
+|---|---|
+| Build | 7 candidates, 6 ranked by tier then age, 1 unprioritised; `needs-info`, milestoned and PR items excluded; share 0.625; `next_minor` `[0,4,0]` from the tag `v0.3.1`; capacity 3 on the existing milestone |
+| Validate | 2 valid plans pass; 10 rejected plans exit 1 (missing, duplicate and unknown issue, 4 new milestones, over capacity, target not open, held without hold, Feature planned, Feature unheld, non-Feature held) |
+| Apply | new milestones titled `v0.4.0`, `v0.5.0`, due today + 14 and + 28 days; existing target takes PATCH only; a dropped PATCH aborts on the read-back with exit 1 |
+| Report | sections render from `plan.json` and the input |
+
+Earlier run on `ce96acf`: the build failed on the label filter (`.name` read on mapped label
+strings); fixed in `e5ff873`.
+
+Inference: with `apply` true, the report step still runs after a failed validate or apply and its
+header reads "applied". Not exercised on a failure path; the fix would key the header on the apply
+step outcome.
+
+Not covered: the runner's jq build (`1.7.1-3ubuntu0.24.04.2`) against upstream; real `gh`
+behaviour for `-F milestone=N`, the milestone POST and `issue_field_values`; the model's output
+against `--json-schema`; the dispatch boolean passed through `with:`.
+
+### Queued after stage 2b
+
+Issue type `Project` (org level; triage splits it into sub-issues), the issue form
+`ISSUE_TEMPLATE/project.yml` and a sandbox test come after stage 2b and before stage 3, in their
+own Plan Mode round. Stages 3, 4 and 5 follow, one per step.
