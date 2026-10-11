@@ -1640,6 +1640,29 @@ read-back of `due_on` after the first create.
 Open: the fix is untested live; the report header still reads "applied" after a failed apply
 (seen in run `38179936884`); the hold test and the forced bad plan are not run.
 
+### Live results: roadmap planner apply run, due dates (2026-10-11)
+
+Run `38181204583` on `becloud-dev/triage-sandbox`, `apply=true`, workflows `main` `eded1ee`
+(due date fix `5a594e8`), after a sandbox reset to the baseline. Result: success. Closes the
+"fix untested live" item of the second apply run.
+
+| Check | Result |
+|---|---|
+| Steps | plan, validate, apply, report, record success |
+| Milestones | number 6 `v0.1.0` due `2026-10-25`, number 7 `v0.2.0` due `2026-11-08`, as expected from a send at `T12:00:00Z` |
+| Plan | milestone 1: #7, #1, #5, #2; milestone 2: #4, #6; held #8, #12; unplanned none |
+| Apply | the read-back held for 6 of 6 |
+| Quoted evidence | 7 of 7; the quote for #4 contains an ellipsis, both fragments are verbatim in the issue body |
+| End state | against the reset baseline only the `milestone` field changed, on 6 issues |
+| Run record | cost $0.0139, `permission_denials_count` 0 |
+
+Confirmed live: the milestone POST, `-F milestone=N`, the read-back, `due_on` after the noon send,
+`issues: write` through the caller, and GNU `date -d "@N"` on the runner.
+
+Open (stage 2b): the no-hold side of the error budget; the validate abort on a live bad plan; an
+integer `target` into an open milestone with capacity (milestones 6 and 7 have room now); the
+report header reads "applied" after a failed apply (seen in run `38179936884`).
+
 ### Queued after stage 2b
 
 Issue type `Project` (org level; triage splits it into sub-issues), the issue form
