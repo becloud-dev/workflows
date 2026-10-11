@@ -1152,3 +1152,48 @@ sentences; keep "closest heading" for text that fits no template heading.
 
 Unverified or not exercised: the denied tool call; the live abort path on a missing evidence
 field; the `Urgent` case on a stopped critical flow with no stated workaround; the split; A3.
+
+### Live results: urgent case (2026-10-11)
+
+Source: `gh` read-only calls on `becloud-dev/triage-sandbox` after `workflows` `92bd555` was
+pushed to `main`; issue #7 ("Checkout page rejects every payment with \"Something went
+wrong\"", free-form body, no workaround) created and label `triage` applied by the user's go.
+Run `38172779881`, `success`; run-record artifact read.
+
+| Observation | Value |
+|---|---|
+| Issue after run | type `Bug`; Priority `Urgent`; no labels (`triage` removed) |
+| Comment | impact sentence, `Type: Bug. <quote>`, `Priority: Urgent. <two sentences>`, `Format fix: <one line>` |
+| Body | description under `### What happened`; empty `### Expected behaviour` and `### Steps to reproduce` appended |
+| Run record | `num_turns` 6, `total_cost_usd` 0.00308, 1527 output tokens, `permission_denials_count` 0 |
+
+Interpretation (inference):
+
+- The business-impact rule holds at both ends: `Medium` for a non-critical control with a stated
+  workaround (#6), `Urgent` for a stopped checkout with none (#7); silence about a workaround
+  was reported as "No workaround is stated" and did not change the outcome.
+- The two-sentence cap on `priority_evidence` held.
+- The denial seen in run `38172402379` did not repeat; its cause stays unexplained.
+- The template `bug.md` writes `##` headings; #5 and #6 got `##` and #7 got `###`, the level
+  the prompt names only for `.yml` forms. One sample of a fidelity slip.
+- The model appended the template's empty headings for sections the issue did not fill; no
+  content was invented.
+
+Decisions (user, 2026-10-11): the prompt requires each template heading exactly as written,
+including its level; empty template headings are accepted as the template's format.
+
+### Sub-issues REST API (read 2026-10-11)
+
+Source: raw `github/rest-api-description` `api.github.com.json` (`main`) and `gh issue create
+--help` (gh 2.102.0 locally).
+
+| Topic | Finding |
+|---|---|
+| List | `GET /repos/{owner}/{repo}/issues/{issue_number}/sub_issues`; parameters `per_page` (max 100, default 30) and `page`; responses 200, 404, 410 |
+| Add | `POST` the same path; body `sub_issue_id` (integer, required), `replace_parent` (boolean); "must belong to the same repository owner as the parent issue"; responses 201, 403, 404, 410, 422; "Creating content too quickly ... may result in secondary rate limiting" |
+| Summary field | issue object carries `sub_issues_summary` (`total`, `completed`, `percent_completed`, all required); sandbox #1 returns `{"completed":0,"percent_completed":0,"total":0}` |
+| `gh issue create` | `--parent <number or URL>` and `--type <name>` present in 2.102.0 |
+
+Interpretation (inference): the split guard can read `sub_issues_summary.total` from
+`GET .../issues/{n}` without paging, so it does not depend on the `gh` version on the runner.
+Whether `GITHUB_TOKEN` with `issues: write` may add a sub-issue is unverified until a live run.
