@@ -1259,3 +1259,29 @@ Interpretation (inference):
 Unverified: that a local-path `uses:` into a sparse-checked-out second repository works with
 `persist-credentials: false`; to be read in the GitHub docs before any edit. Not read: the
 release notes between the pinned numbered tags and the previous floating resolution.
+
+### Self-repository action reference (read 2026-10-11)
+
+Source: raw `github/docs` `main`, `content/actions/reference/workflows-and-actions/workflow-syntax.md`
+(section "Using an action in the same repository as the workflow at the running commit") and
+`content/actions/how-tos/write-workflows/choose-what-workflows-do/find-and-customize-actions.md`;
+last change to the first file 2026-10-01.
+
+| Topic | Finding |
+|---|---|
+| Syntax | `uses: $/path/to/action`; "resolves to that repository at the running commit (the same SHA as the running workflow or action)"; no checkout needed |
+| Ref | must not carry an `@{ref}` suffix; "the ref is always the commit the running workflow or action is using" |
+| Called workflow | "`$/` always resolves against the repository of the file it appears in, not the repository that called it"; a reusable workflow called from another repository resolves to the called workflow's repository |
+| `./path` | "resolves against the runner's workspace"; requires a checkout; docs: "For most cases, use the `$/` syntax" |
+| Availability | "not available in GitHub Enterprise Server"; no preview or version note on the page |
+
+Interpretation (inference): replacing `becloud-dev/workflows/.github/actions/record-run@main`
+with `$/.github/actions/record-run` makes the composite come from the same commit as
+`job.workflow_sha`, which removes the version skew recorded above. The sparse-checkout candidate
+there is superseded: the `./` form resolves against the caller's workspace, and `$/` needs no
+checkout.
+
+Unverified: that `$/` resolves as documented inside a reusable workflow on a live run. An
+unresolvable `uses` fails at job setup, before any step, so a failure would fail the whole job,
+not only the record step. The first live run on the sandbox is the test; callers use `@main`, so
+a push makes it live for every caller (only the sandbox today).
