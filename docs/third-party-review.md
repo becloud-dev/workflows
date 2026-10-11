@@ -290,7 +290,7 @@ Implications (inference):
 Unverified: how a Claude step writes to Projects v2 with the App token; whether a custom App
 path needs `id-token: write`; the current major of `create-github-app-token` (the setup page
 pins `@v1`); model IDs in the docs examples are inconsistent (`claude-opus-5-5`,
-`claude-sonnet-5`), settled in #19. `docs/usage.md` and `docs/faq.md` not read.
+`claude-sonnet-5`), settled in #19. `docs/usage.md` and `docs/faq.md` read in the monitoring subsection below: no cost content, and nothing on `gh pr create` in automation mode.
 
 ### Model choice and billing (#19, #15), read 2026-10-11
 
@@ -659,15 +659,21 @@ Implications (inference):
 
 - The caller workflow, not the Action, must collect metrics: one `jq` step on `execution_file`
   that keeps only the `result` message fields (`total_cost_usd`, `duration_ms`, `duration_api_ms`,
-  `num_turns`, `modelUsage`, `usage`) and drops everything else.
+  `num_turns`, `is_error`, `modelUsage`) and drops everything else. `modelUsage` is the field
+  the SDK types name for token and cost accounting; `usage` is the main loop only.
 - Minimal GitHub-native design: that record goes to the job summary (always), and to an artifact
   or a number field only if cross-run totals are wanted. Stage and model come from the caller
   inputs already decided, so the record carries `stage`, `model`, `run_id`, `issue`.
 - For this study, `total_cost_usd` is a list-price equivalent, which is the useful comparison
   against Bedrock later; it is not what the subscription charges (nothing per token).
 
-Unverified (needs a live run): whether an OAuth run populates `total_cost_usd` and
-`modelUsage` token fields in the result message; the exact `usage` field names in the result
-message; whether the billing usage endpoints return rows for a public repo on the Free plan;
-Projects v2 writes with an App token from a workflow step; whether `display_report` output
-fits the 1 MiB step limit on long runs.
+Read 2026-10-11 (SDK types, `@anthropic-ai/claude-agent-sdk@0.3.296`, the version range the
+Action pins): `ModelUsage` carries `inputTokens`, `outputTokens`, `thinkingTokens?`,
+`cacheReadInputTokens`, `cacheCreationInputTokens`, `webSearchRequests`, `costUSD`,
+`canonicalModel?`, `provider?` and `costBasis?` (`list`, `managed`, `unknown`). Both billing
+usage endpoints answer `200` with `usageItems: []` for `becloud-dev` (Free plan, no repos).
+
+Unverified (needs a live run): whether an OAuth run fills `total_cost_usd` and `modelUsage`
+with values; whether the billing usage endpoints return rows for a public repo on the Free
+plan; Projects v2 writes with an App token from a workflow step; whether `display_report`
+output fits the 1 MiB step limit on long runs.

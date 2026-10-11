@@ -14,7 +14,7 @@ reachable gaps, show the exact text, wait for the go, write, commit locally. Fir
 ## Git state (2026-10-11T13:41-03:00)
 - Branch `main`, clean tree (verified via `git status -sb`).
 - No remote, no upstream: nothing is pushed.
-- 24 commits including this refresh (verified via `git log --oneline`).
+- 25 commits including this refresh (verified via `git log --oneline`).
 - Probe repos deleted 2026-10-11; the org `becloud-dev` has no repositories yet (verified via
   `gh repo list becloud-dev`).
 
@@ -42,7 +42,7 @@ reachable gaps, show the exact text, wait for the go, write, commit locally. Fir
 - Not verified: ruleset rule types on Free public repos; `vars` in `with:`; `gh pr create` in
   automation mode; Projects v2 writes from a Claude step; App-token checks on release PRs; which
   commit types alone create a release PR; behaviour at the Pro limit; OAuth run fills
-  `total_cost_usd` and token fields; billing endpoints on a public Free repo; fine-tuning on
+  `total_cost_usd` and `modelUsage` values (field names settled); billing rows for a public repo; fine-tuning on
   Bedrock for the 5.5 models.
 - Not read: #22; Brazilian copyright law.
 
