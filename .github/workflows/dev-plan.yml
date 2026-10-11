@@ -1,0 +1,165 @@
+name: dev-plan
+
+on:
+  workflow_call:
+    inputs:
+      model:
+        type: string
+        required: true
+      owners:
+        description: Comma-separated logins, no spaces
+        type: string
+        required: true
+    secrets:
+      claude_code_oauth_token:
+        required: true
+
+permissions: {}
+
+jobs:
+  dev-plan:
+    name: Development plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: contains(format(',{0},', inputs.owners), format(',{0},', github.event.sender.login))
+    permissions:
+      contents: read
+      issues: write # comment, add the needs-info label
+    steps:
+      - name: Check out the caller repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check out the shared prompts
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .ai-workflows
+          sparse-checkout: prompts
+          persist-credentials: false
+
+      - name: Read the issue type and the design gate
+        id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ github.event.issue.number }}
+        run: |
+          set -euo pipefail
+          issue=$(gh api "repos/$GITHUB_REPOSITORY/issues/$ISSUE")
+          echo "type=$(jq -r '.type.name // ""' <<< "$issue")" >> "$GITHUB_OUTPUT"
+          pending=$(jq -r '[.labels[].name] | index("UX/UI") != null' <<< "$issue")
+          echo "design_pending=$pending" >> "$GITHUB_OUTPUT"
+
+      - name: Skip a Project
+        if: steps.gate.outputs.type == 'Project'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ github.event.issue.number }}
+        run: |
+          gh issue comment "$ISSUE" --body "A development plan applies to the sub-issues of a Project, not to the Project itself. No plan was made."
+
+      - name: Hold until the design is confirmed
+        if: steps.gate.outputs.type != 'Project' && steps.gate.outputs.design_pending == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ github.event.issue.number }}
+        run: |
+          gh issue comment "$ISSUE" --body $'<!-- dev-plan-hold -->\nDesign not confirmed: this issue still carries `UX/UI`. Remove `UX/UI`, then add `RELEASE` again. No plan was made.'
+
+      - name: Plan
+        id: plan
+        if: steps.gate.outputs.type != 'Project' && steps.gate.outputs.design_pending != 'true'
+        uses: anthropics/claude-code-action@1d6de8cb0c237e7c15e9e1bdf973826ebae490cc # v1.0.248
+        with:
+          claude_code_oauth_token: ${{ secrets.claude_code_oauth_token }}
+          github_token: ${{ github.token }}
+          prompt: |
+            Repository: ${{ github.repository }}
+            Issue number: ${{ github.event.issue.number }}
+            Read .ai-workflows/prompts/dev-plan.md and follow it.
+          claude_args: |
+            --model ${{ inputs.model }}
+            --allowedTools "Bash(gh issue view:*),Read,Grep,Glob"
+            --json-schema '{"type":"object","properties":{"outcome":{"type":"string","enum":["planned","needs_info"]},"rationale":{"type":"string"},"questions":{"type":"array","items":{"type":"string"},"maxItems":5},"objective":{"type":"string"},"steps":{"type":"array","items":{"type":"string"},"maxItems":10},"spec":{"type":"array","maxItems":8,"items":{"type":"object","properties":{"test":{"type":"string"},"asserts":{"type":"string"}},"required":["test","asserts"]}},"acceptance_criteria":{"type":"array","items":{"type":"string"},"maxItems":8},"files":{"type":"array","items":{"type":"string"}},"risks":{"type":"array","items":{"type":"string"}}},"required":["outcome","rationale"]}'
+
+      - name: Post the plan
+        if: steps.plan.outputs.structured_output != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERDICT: ${{ steps.plan.outputs.structured_output }}
+          ISSUE: ${{ github.event.issue.number }}
+        run: |
+          set -euo pipefail
+          f="$RUNNER_TEMP/plan.json"
+          printf '%s\n' "$VERDICT" > "$f"
+          outcome=$(jq -er .outcome "$f")
+          if [ "$outcome" = needs_info ]; then
+            jq -e '.questions | type == "array" and length >= 1 and length <= 5' "$f" > /dev/null
+            {
+              echo '<!-- dev-plan-questions -->'
+              echo 'More information is needed before a development plan:'
+              echo
+              jq -r '.questions | to_entries[] | "\(.key + 1). \(.value)"' "$f"
+              echo
+              echo "Reason: $(jq -r .rationale "$f")"
+            } > "$RUNNER_TEMP/plan.md"
+            gh issue edit "$ISSUE" --add-label needs-info
+            gh issue comment "$ISSUE" --body-file "$RUNNER_TEMP/plan.md"
+            exit 0
+          fi
+          jq -e '(.objective | type == "string" and length > 0)
+                 and (.steps | type == "array" and length >= 2 and length <= 10)
+                 and (.spec | type == "array" and length >= 1 and length <= 8)
+                 and (.acceptance_criteria | type == "array" and length >= 2 and length <= 8)
+                 and (.files | type == "array" and length >= 1)
+                 and (.risks | type == "array")' "$f" > /dev/null
+          {
+            echo '<!-- dev-plan -->'
+            echo '## Development plan'
+            echo
+            echo "**Objective.** $(jq -r .objective "$f")"
+            echo
+            echo '**Steps**'
+            jq -r '.steps | to_entries[] | "\(.key + 1). \(.value)"' "$f"
+            echo
+            echo '**Tests first** (red, then green)'
+            jq -r '.spec[] | "- `\(.test)`: \(.asserts)"' "$f"
+            echo
+            echo '**Acceptance criteria**'
+            jq -r '.acceptance_criteria | to_entries[] | "\(.key + 1). \(.value)"' "$f"
+            echo
+            echo '**Files**'
+            jq -r '.files[] | "- `\(.)`"' "$f"
+            if [ "$(jq '.risks | length' "$f")" -gt 0 ]; then
+              echo
+              echo '**Risks and assumptions**'
+              jq -r '.risks[] | "- \(.)"' "$f"
+            fi
+            echo
+            jq -r .rationale "$f"
+            echo
+            echo 'Reply `/approve` to start the execution. Edit this comment first to change the plan; the execution reads it as it is when approved.'
+          } > "$RUNNER_TEMP/plan.md"
+          gh issue comment "$ISSUE" --body-file "$RUNNER_TEMP/plan.md"
+
+      - name: Record the plan run
+        if: always() && steps.plan.outcome != 'skipped'
+        id: record
+        uses: $/.github/actions/record-run
+        with:
+          execution_file: ${{ steps.plan.outputs.execution_file }}
+          stage: dev-plan
+          model: ${{ inputs.model }}
+          auth: oauth
+          issue: ${{ github.event.issue.number }}
+
+      - name: Upload the record
+        if: always() && steps.plan.outcome != 'skipped'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: run-record-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ steps.record.outputs.record_path }}
+          if-no-files-found: warn
+          retention-days: 90
