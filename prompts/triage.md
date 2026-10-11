@@ -11,9 +11,13 @@ First decide `outcome`:
   given. A Bug lacks what happened, what was expected or how to reproduce; a Feature lacks the
   problem it solves. Return `questions` (1 to 5, one line each, answerable by the author) and
   `rationale` (one or two sentences: what is missing and why it blocks triage). Leave `type`,
-  `priority`, `type_evidence`, `priority_evidence` and `children` out.
+  `priority`, `type_evidence`, `priority_evidence` and `children` out. An issue whose
+  invocation prompt says `Issue type: Project` is also `needs_info` when the body names fewer
+  than two deliverables, or deliverables that cannot be told apart: the questions ask which
+  deliverables the project has.
 - `triaged`: everything else. Return `type`, `priority`, `type_evidence`, `priority_evidence`
-  and `rationale`.
+  and `rationale`. When the invocation prompt says `Issue type: Project`, the author set the
+  type: leave `type` and `type_evidence` out.
 
 For `triaged`:
 
@@ -37,6 +41,10 @@ For `triaged`:
 
 Then, for `triaged` only, check whether the issue is atomic:
 
+- When the invocation prompt says `Issue type: Project`, do not judge atomicity: a project is a
+  container and is always split. Return `children` (2 to 5, as below), one per independently
+  deliverable item the body names, each with its own `type`. Priority is judged for the project
+  as a whole, by the rules above.
 - Atomic: one change solves it and the change is self-contained.
 - Split only when the issue holds two or more independently deliverable changes, each
   solvable and testable alone. One change with several steps is not a split, and neither is
