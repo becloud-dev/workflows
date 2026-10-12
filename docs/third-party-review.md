@@ -2099,3 +2099,55 @@ post-merge runs (logs show the script, not its lines); the cause of the missed f
 Corrections: "Release PR not merged, `READY TO LIVE` not exercised, tag and release not created"
 is closed. Open: no ruleset (the gate does not block); the `refactor`/`perf`/`revert` types; the
 stale-review check; a non-owner labeler and a non-release open PR are fixture-only.
+
+### Stale-review check (2026-10-12)
+
+Source read (raw): `github/docs` `server-to-server-permissions.json` (fpt-2026-03-10):
+`GET .../commits/{ref}` needs `contents: read`; `GET .../issues/{n}/comments` needs `issues` or
+`pull_requests` read. `events-that-trigger-workflows.md`: `workflow_run` runs on the default branch
+and fires regardless of the conclusion of the watched workflow. `trigger-a-workflow.md`: events
+caused by `GITHUB_TOKEN` start no workflow. GraphQL introspection of `IssueComment`: `editor` and
+`lastEditedAt` exist; the REST `issue-comment` object has `updated_at` and no editor.
+
+Change: `workflows` `e527254` (`release-review.yml` writes line 2,
+`<!-- release-review-sha: <40 hex> -->`), `ec70b3e` (`release-gate.yml`: `contents: read`; for a
+release PR with a review, reviewed SHA against the default-branch tip, last editor through
+GraphQL); `triage-sandbox` `f4d80ba` (caller `contents: read`), `b333d66` (caller triggers `push`
+to `main` and `workflow_run` of `release-review`). Rules: the review is the last
+`github-actions[bot]` comment starting `<!-- release-review -->`; no review: the gate is as before;
+line 2 missing or malformed: stale; an edited review passes only if the last editor is an owner,
+and an unreadable editor fails.
+
+Fixtures (jq 1.7.1, stub `gh`): 35 cases (15 for the earlier behaviour, rebuilt because the
+earlier scripts were not kept, so not the 22 recorded before; 20 new), 8 mutations caught; zizmor
+auditor: no findings on the two shared workflows.
+
+Live results (PR #29, head `5f4fb50`):
+
+| Check | Run | Status |
+|---|---|---|
+| no review, label missing | `38267765984`, `38267766138` | failure: missing label |
+| `/review` | `38267952201` | line 2 equals the `main` tip `d0948d2` |
+| label set, review current | `38268932754` | success |
+| `chore:` push to `main` | `release-please` `38269387914` | no gate run; status stayed success |
+| label toggled, review of `d0948d2`, `main` at `b52e912` | `38269819486` | failure: review is stale |
+| `/review` again | `38270323748` | no gate run; status stayed failure |
+| label toggled, review current | after 15:31 | success |
+| owner edit of the review, label toggled | after 15:31:18 | success (editor `bentoluizv`) |
+| `push` to `main` (caller change) | `38271343990` | failure: stale (reviewed `b52e912`, `main` `b333d66`) |
+| `/review` after the push | `38271524175` (`workflow_run`) | success |
+| ordinary comment | `38271582453` | skipped |
+
+Inference: the editor query works under `GITHUB_TOKEN` with `issues`, `pull-requests` and
+`contents` read (a readable node came back for an unedited and an owner-edited comment; the
+statuses are the evidence, the logs were not read). Before the caller change, the status moved
+only on PR and issue events; the two events above show a green status on a stale review and a red
+status on a current one.
+
+Not verified: an edit by a non-owner (no second account); only the last editor is read, so an
+earlier non-owner edit overwritten by an owner edit is not detected; one sample per path.
+zizmor reports `dangerous-triggers` on the caller (`workflow_run`), accepted because the job
+checks out nothing and uses no event text.
+
+Corrections: gap rows "Review comment not marked stale after a newer commit on `main`" and
+"an editor who is not an owner is not checked" are closed by this record, with the limits above.
