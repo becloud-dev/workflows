@@ -2346,3 +2346,37 @@ release needs a seed tag or `bootstrap-sha`; a moving major tag is moved with `P
 Not verified: that an ignore comment on the `workflow_run:` line suppresses only that finding
 (run in the `dangerous-triggers` step); rulesets for tags on a public repository of a free
 organisation; release-please behaviour on the `workflows` repository itself.
+
+### Security design: stage 4 checklist and stage 5 review (2026-10-12)
+
+Decisions (user, 2026-10-12): basis OWASP Top 10:2025; stage 4 gets a `security` field whose
+controls are also acceptance criteria and tests; stage 5 is prompt only, no schema change; the
+caps of `spec` and `acceptance_criteria` rise from 8 to 10.
+
+Change (`workflows`): `77952b2` (`prompts/dev-plan.md`: the `security` return item with the ten
+categories; `dev-plan.yml`: schema field, caps 10, validation, a "Security" section in the plan
+comment), `de89f56` (`prompts/release-review.md` item 2: the ten categories, category named in
+the finding `body`, titles unprefixed). The validation refuses a plan where a category repeats,
+is not `A01` to `A10`, or has a control without an acceptance criterion and a `spec` entry that
+start with its id.
+
+Fixtures (jq 1.7.1, stub `gh`, real `run:` block of "Post the plan"): 30 cases pass; the same
+cases fail 14 on the block before the change; 10 mutations caught, 1 equivalent survivor (the
+`security` length cap is bounded by uniqueness and the category check). zizmor 1.30.1 auditor
+on `workflows`: only the earlier informational finding in `ux-ui.yml`. Defect found by the
+fixtures and fixed before use: the jq validation did not re-check that `category` is `A01` to
+`A10`, only the model's output schema did (class: a constraint enforced only on the producer's
+schema; caught by fixtures with out-of-range values).
+
+Live results (sandbox):
+
+| Case | Run | Result |
+|---|---|---|
+| issue #34 (`--name` flag with an injection angle), label `RELEASE` | `dev-plan` `38283460398` | plan with a Security section A05 and A10, criteria and `spec` entries prefixed `A05:` and `A10:` |
+| `/review` on release PR #33 | `release-review` `38283699578` | blocking finding `bin/greet:5` with body "A05 Injection: ..."; deferred test finding; review SHA `6770ff7` |
+
+Inference: with the category list the plan and the review name the right category (one sample
+each; A10 in the plan was the model's own addition).
+
+Not verified: a plan with no security angle live (the "no category applies" line is fixture
+only); a release that does not touch the file holding a defect; cost and variance per model.
