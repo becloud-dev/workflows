@@ -9,7 +9,7 @@ workflow at the moving tag `@v0`.
 | Path | Purpose |
 |---|---|
 | `.github/workflows/` | the 11 callers: `pr-checks`, `release-please`, `release-gate`, `release-review`, `release-issues`, `triage`, `dev-plan`, `dev-execute`, `ux-ui`, `planner-backlog`, `planner-roadmap` |
-| `release-please-config.json`, `.release-please-manifest.json` | release notes sections (`refactor` visible) and the seed version `0.1.0` |
+| `release-please-config.json`, `.release-please-manifest.json` | release notes sections (`refactor` visible), the seed version `0.1.0`, and `bump-minor-pre-major`: while the version is 0.x a breaking change bumps the minor version, so 1.0.0 is chosen by hand |
 | `.github/ISSUE_TEMPLATE/` | `bug.md`, `project.yml` |
 | `AGENTS.md`, `docs/design-system.md` | stubs to fill; `ux-ui` reads the design system |
 | `bootstrap.sh` | labels, repository variables and the seed tag |
@@ -56,3 +56,6 @@ off. The executor App opens the pull request, so the setting is not needed.
 - `SETUP_COMMAND` is optional and not set by the script.
 - `bootstrap.sh` creates no organisation secret, variable or Project; the grant in step 2 is
   yours.
+- The version stays below 1.0.0 until someone decides otherwise. 1.0.0 is reached only by a
+  deliberate step: a commit with a `Release-As: 1.0.0` footer, or removing `bump-minor-pre-major`
+  from `release-please-config.json`.
