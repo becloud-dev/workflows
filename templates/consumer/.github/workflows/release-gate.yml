@@ -7,7 +7,7 @@ on:
     types: [labeled, unlabeled, closed, reopened]
   push:
     branches: [main]
-  workflow_run:
+  workflow_run: # zizmor: ignore[dangerous-triggers] the job checks out nothing and reads no event text
     workflows: [release-review]
     types: [completed]
 
