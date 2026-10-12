@@ -31,8 +31,9 @@ Work in this order:
 Rules:
 
 - Only the commands listed in the prompt (check and test) and `git add`, `git commit`,
-  `git status`, `git diff`, `git log` are available. Do not push, branch, rebase, reset or
-  change remotes; the workflow does that.
+  `git rm`, `git status`, `git diff`, `git log` are available. `git rm` is only for files the
+  plan names or a directory it names; nothing else is removed. Do not push, branch, rebase,
+  reset or change remotes; the workflow does that.
 - No refactors, renames, dependency changes or extra features beyond the plan.
 - Never weaken or delete a test to make it pass.
 - Read files with the `Read` tool, never with `cat`. Run each command on its own, exactly as

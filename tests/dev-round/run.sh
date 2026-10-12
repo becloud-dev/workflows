@@ -23,7 +23,14 @@ echo "# tools"
 newcase; CHECK='' TEST='' bash "$W/tools.sh" >/dev/null 2>&1; rc=$?
 a=$(out allowed)
 expect "tools: empty commands exit 0" $rc
-case "$a" in *'Bash(git log:*)') ok "tools: base list only, no stray entry";; *) bad "tools: base list only ($a)";; esac
+case "$a" in *'Bash(git rm:*)') ok "tools: base list only, no stray entry";; *) bad "tools: base list only ($a)";; esac
+case ",$a," in *',Bash(git rm:*),'*) ok "tools: allowed list contains git rm";; *) bad "tools: git rm missing ($a)";; esac
+missing=""
+for e in Read Edit Write Grep Glob 'Bash(git add:*)' 'Bash(git commit:*)' 'Bash(git status:*)' 'Bash(git diff:*)' 'Bash(git log:*)'; do
+  case ",$a," in *",$e,"*) ;; *) missing="$missing $e";; esac
+done
+[ -z "$missing" ] && ok "tools: existing entries unchanged" || bad "tools: existing entries missing:$missing"
+case "$a" in *'git mv'*|*'git reset'*|*'git checkout'*|*'git clean'*|*'Bash(rm'*) bad "tools: wider git or rm entry ($a)";; *) ok "tools: no wider git or rm entries";; esac
 newcase; CHECK='sh -n bin/greet' TEST='sh tests/greet_test.sh' bash "$W/tools.sh" >/dev/null 2>&1; rc=$?
 a=$(out allowed)
 expect "tools: two commands exit 0" $rc

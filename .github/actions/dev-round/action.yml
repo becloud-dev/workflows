@@ -37,7 +37,7 @@ runs:
         TEST: ${{ inputs.test_command }}
       run: |
         set -euo pipefail
-        allowed='Read,Edit,Write,Grep,Glob,Bash(git add:*),Bash(git commit:*),Bash(git status:*),Bash(git diff:*),Bash(git log:*)'
+        allowed='Read,Edit,Write,Grep,Glob,Bash(git add:*),Bash(git commit:*),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git rm:*)'
         for c in "$CHECK" "$TEST"; do
           [ -z "$c" ] && continue
           case "$c" in
