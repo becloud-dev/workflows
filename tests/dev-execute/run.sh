@@ -214,4 +214,38 @@ emit("executor_app_private_key" in wc.get("secrets", {})
 PY
 while IFS='|' read -r r n; do [ "$r" = ok ] && ok || bad "$n"; done < "$W/app.out"
 
+echo "# stages record"
+python3 -I - "$ROOT" > "$W/stages.out" <<'PY'
+import sys, os
+root = sys.argv[1]
+def emit(ok, name): print(("ok|" if ok else "bad|") + name)
+path = os.path.join(root, "docs", "stages.md")
+if not os.path.exists(path):
+    for n in ("docs/stages.md exists", "every workflow has a row", "every row has an identity and permissions",
+              "the executor App row names exactly contents, pull-requests and workflows",
+              "states the rule for a stage that needs more than GITHUB_TOKEN"):
+        emit(False, "stages: " + n)
+    sys.exit(0)
+text = open(path).read()
+rows = []
+for line in text.splitlines():
+    if not line.lstrip().startswith("|"):
+        continue
+    cells = [c.strip() for c in line.strip().strip("|").split("|")]
+    if len(cells) >= 4 and cells[0].startswith("`") and cells[0].endswith("`"):
+        rows.append(cells)
+wf = sorted(f for f in os.listdir(os.path.join(root, ".github", "workflows"))
+            if f.endswith(".yml") and not f.startswith("local-"))
+listed = {r[0].strip("`") for r in rows}
+emit(True, "stages: docs/stages.md exists")
+emit(not [f for f in wf if f not in listed], "stages: every workflow has a row")
+emit(bool(rows) and all(r[2] and r[3] for r in rows), "stages: every row has an identity and permissions")
+ex = [r for r in rows if "executor App" in r[2]]
+perms = sorted(p.split()[0] for p in ex[0][3].split(",")) if len(ex) == 1 else None
+emit(perms == ["contents", "pull-requests", "workflows"],
+     "stages: the executor App row names exactly contents, pull-requests and workflows")
+emit("its own strict App" in text, "stages: states the rule for a stage that needs more than GITHUB_TOKEN")
+PY
+while IFS='|' read -r r n; do [ "$r" = ok ] && ok || bad "$n"; done < "$W/stages.out"
+
 summary
