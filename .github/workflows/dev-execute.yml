@@ -65,6 +65,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           ISSUE: ${{ github.event.issue.number }}
           BODY: ${{ github.event.comment.body }}
+          OWNERS: ${{ inputs.owners }}
         run: |
           set -euo pipefail
           first=$(printf '%s' "$BODY" | head -n 1 | tr -d '\r')
@@ -83,6 +84,10 @@ jobs:
           type=$(jq -r '.type.name // ""' <<< "$issue")
           [ "$type" != Project ] \
             || stop "An execution applies to the sub-issues of a Project, not to the Project itself."
+          author_ok=$(jq -n --arg a "$(jq -r .user.login <<< "$issue")" --arg o "$OWNERS" \
+            '(($o | ascii_downcase | split(",")) + ["github-actions[bot]"]) | index($a | ascii_downcase) != null')
+          [ "$author_ok" = true ] \
+            || stop "No execution: this issue was not written by an owner or by the automation."
           plan=$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$ISSUE/comments" --jq '.[]' \
             | jq -s 'map(select(.user.login == "github-actions[bot]" and (.body | startswith("<!-- dev-plan -->")))) | last // empty')
           [ -n "$plan" ] || stop "No execution: there is no development plan comment on this issue. Add \`RELEASE\` to get one."

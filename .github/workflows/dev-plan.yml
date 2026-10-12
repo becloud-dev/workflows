@@ -40,20 +40,43 @@ jobs:
           sparse-checkout: prompts
           persist-credentials: false
 
-      - name: Read the issue type and the design gate
+      - name: Read the issue type, the author and the design gate
         id: gate
         env:
           GH_TOKEN: ${{ github.token }}
           ISSUE: ${{ github.event.issue.number }}
+          OWNERS: ${{ inputs.owners }}
         run: |
           set -euo pipefail
           issue=$(gh api "repos/$GITHUB_REPOSITORY/issues/$ISSUE")
           echo "type=$(jq -r '.type.name // ""' <<< "$issue")" >> "$GITHUB_OUTPUT"
           pending=$(jq -r '[.labels[].name] | index("UX/UI") != null' <<< "$issue")
           echo "design_pending=$pending" >> "$GITHUB_OUTPUT"
+          # only the owners and the automation may have written what the plan reads
+          ok=$(jq -n --arg a "$(jq -r .user.login <<< "$issue")" --arg o "$OWNERS" \
+            '(($o | ascii_downcase | split(",")) + ["github-actions[bot]"]) | index($a | ascii_downcase) != null')
+          echo "author_ok=$ok" >> "$GITHUB_OUTPUT"
+          if [ "$ok" = true ]; then
+            comments=$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$ISSUE/comments" --jq '.[]' \
+              | jq -s --arg o "$OWNERS" '[ .[]
+                  | select((.user.login | ascii_downcase) as $l
+                           | (($o | ascii_downcase | split(",")) + ["github-actions[bot]"]) | index($l) != null)
+                  | {author: .user.login, created_at, body} ]')
+            jq --argjson c "$comments" '{number, title, body, labels: [.labels[].name], comments: $c}' \
+              <<< "$issue" > "$RUNNER_TEMP/issue.json"
+            echo "issue_file=$RUNNER_TEMP/issue.json" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Refuse an issue from another author
+        if: steps.gate.outputs.author_ok != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ github.event.issue.number }}
+        run: |
+          gh issue comment "$ISSUE" --body $'<!-- dev-plan-refused -->\nNo plan was made: this issue was not written by an owner or by the automation, so its text is not used as the input of a plan.'
 
       - name: Skip a Project
-        if: steps.gate.outputs.type == 'Project'
+        if: steps.gate.outputs.author_ok == 'true' && steps.gate.outputs.type == 'Project'
         env:
           GH_TOKEN: ${{ github.token }}
           ISSUE: ${{ github.event.issue.number }}
@@ -61,7 +84,7 @@ jobs:
           gh issue comment "$ISSUE" --body "A development plan applies to the sub-issues of a Project, not to the Project itself. No plan was made."
 
       - name: Hold until the design is confirmed
-        if: steps.gate.outputs.type != 'Project' && steps.gate.outputs.design_pending == 'true'
+        if: steps.gate.outputs.author_ok == 'true' && steps.gate.outputs.type != 'Project' && steps.gate.outputs.design_pending == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           ISSUE: ${{ github.event.issue.number }}
@@ -70,7 +93,7 @@ jobs:
 
       - name: Plan
         id: plan
-        if: steps.gate.outputs.type != 'Project' && steps.gate.outputs.design_pending != 'true'
+        if: steps.gate.outputs.author_ok == 'true' && steps.gate.outputs.type != 'Project' && steps.gate.outputs.design_pending != 'true'
         uses: anthropics/claude-code-action@1d6de8cb0c237e7c15e9e1bdf973826ebae490cc # v1.0.248
         with:
           claude_code_oauth_token: ${{ secrets.claude_code_oauth_token }}
@@ -78,10 +101,11 @@ jobs:
           prompt: |
             Repository: ${{ github.repository }}
             Issue number: ${{ github.event.issue.number }}
+            Issue file: ${{ steps.gate.outputs.issue_file }}
             Read .ai-workflows/prompts/dev-plan.md and follow it.
           claude_args: |
             --model ${{ inputs.model }}
-            --allowedTools "Bash(gh issue view:*),Read,Grep,Glob"
+            --allowedTools "Read,Grep,Glob"
             --json-schema '{"type":"object","properties":{"outcome":{"type":"string","enum":["planned","needs_info"]},"rationale":{"type":"string"},"questions":{"type":"array","items":{"type":"string"},"maxItems":5},"objective":{"type":"string"},"steps":{"type":"array","items":{"type":"string"},"maxItems":10},"spec":{"type":"array","maxItems":8,"items":{"type":"object","properties":{"test":{"type":"string"},"asserts":{"type":"string"}},"required":["test","asserts"]}},"acceptance_criteria":{"type":"array","items":{"type":"string"},"maxItems":8},"files":{"type":"array","items":{"type":"string"}},"risks":{"type":"array","items":{"type":"string"}}},"required":["outcome","rationale"]}'
 
       - name: Post the plan
