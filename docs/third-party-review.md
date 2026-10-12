@@ -1968,3 +1968,100 @@ Gaps (recorded, not closed):
 | One sample per model | cost and quality variance unknown | more runs |
 | Non-owner writer edits the plan comment | the execution reads it as it is | a check of the comment's last editor |
 | Organisation setting on | any workflow in the organisation can open PRs | turn it off after 4b, or the GitHub App round |
+
+### Stage 5: release (2026-10-12)
+
+Decisions (user, 2026-10-12): a GitHub App `becloud-dev-release`, owned by the organisation, for
+the release PR; installed on all repositories of `becloud-dev` because the workflows are to run
+organisation-wide (chosen over "Only select repositories"); scope is the review only, the
+`release-blocker` merge or deploy gate job, the label sync and the form sync stay later; the stage
+is split in 5a (release PR and live checks) and 5b (review); the review and the issues use
+`GITHUB_TOKEN`, the App token exists only in the release-please job; the automation applies no
+start label, the owner adds `RELEASE` to a blocking issue (skips triage) and `triage` to the
+others; the review lives in a PR comment, started by `/review`, answered by `/reject` (reason on
+the following lines) or `/approve`, and `READY TO LIVE` stays the owner's label; the 4b PR step
+stays on `GITHUB_TOKEN` for now.
+
+Sources read (raw): `actions/create-github-app-token` `action.yml` and README (v3.2.0,
+`bcd2ba49`; input `client-id`, `app-id` deprecated); `googleapis/release-please-action`
+`action.yml` and README (v5.0.0, `45996ed1`); `googleapis/release-please` v17.11.2 `manifest.ts`;
+`github/docs` `actions-do-not-trigger-workflows.md`, `additional-permissions.md` and
+`server-to-server-permissions.json`; `bentoluizv/patagonia-trip` `claude-pr-review.yml`,
+`pr-review.md`, `release.yml`; run logs and artifacts of the runs below.
+
+Changes: `workflows` `cbcd334` (prompts `release-review.md`, `release-issues.md`), `0e8482a`
+(`release-review.yml`), `72ac98d` (`release-issues.yml`), `0e481de` (`pull-requests: write`);
+`triage-sandbox` `2199926` (`version.txt`, `release-please.yml`), `20cffda` (`pr-checks.yml`),
+`e6bc9c9` (callers), `911e50c` (`--shout` fixture with a seeded `eval` defect), `0211639`
+(caller `pull-requests: write`); seed tag `v0.1.0` (lightweight, on `20cffda`); App, org variable
+`APP_CLIENT_ID` and org secret `APP_PRIVATE_KEY` visible to `triage-sandbox` only; labels
+`release-blocker` and `READY TO LIVE` on the sandbox. All pushed.
+
+Fixtures (jq 1.7.1, SHA-256 verified against the release checksum; real `run:` blocks, stub `gh`):
+`release-review` 50 cases (gate 31, post 19), `release-issues` 57 (gate 19, create 38; stateful
+stub). Mutations (4 and 4) fail as expected. zizmor 1.30.1 offline, auditor: no findings on the
+two shared workflows; `release-please.yml` keeps `secrets-outside-env` (accepted: the key is an
+organisation secret, the workflow runs on `push` to `main` only); the two callers carry the same
+three findings as the other callers (`unpinned-uses`, `excessive-permissions`,
+`undocumented-permissions`).
+
+Live results (`gh` and run-log read-back):
+
+| Check | Run | Result |
+|---|---|---|
+| 5a: first push with seed tag | `38250366025` | App token minted; baseline from the tag; 0 commits after it; no PR |
+| 5a: `chore:` only | `38250593500` | "No user facing commits found since 20cffda… - skipping"; no PR |
+| 5a: `fix:` | `38251263422` | PR #26 `chore(main): release 0.1.1`, branch `release-please--branches--main`, author `becloud-dev-release[bot]`, `autorelease: pending`, `CHANGELOG.md` added, `version.txt` modified |
+| 5a: checks on the App PR | `38251310675` | `pr-checks` `pull_request` run started and succeeded, not approval-required |
+| 5b: `/review` | `38253965265` | Opus 5.5, 8 turns, 0.223 USD, 0 denials; blocking `bin/greet:5` (`eval`), deferred `tests/greet_test.sh:7` (no test) |
+| 5b: `/reject` with a reason | `38254781174` | new review comment, 7 turns, 0.073 USD; the reason (no-argument case) is in the blocking item |
+| 5b: `/approve`, first | `38255071190` | issues #27 and #28 created and set; step failed on the final comment, HTTP 403 |
+| 5b: `/approve`, second (after the fix) | `38257406730` | no new issue; #27 and #28 re-checked; `<!-- release-review-issues -->` comment; Sonnet 5.5, 4 turns, 0.037 USD |
+| 5b: `/approve`, third | `38257868747` | refused by the gate, no model run |
+| 5b: `/review` on closed PR #25 | `38257868740` | "No review: this pull request is not open." |
+
+Inference: an App installation token starts `pull_request` runs on the release PR (one sample);
+a seed tag is a sufficient baseline over a history of direct pushes; the stage 5 mechanics hold
+end to end (gate, range from the tag, review, reject loop, issue creation, idempotent repeat).
+The review read `bin/greet:5`, which is on `main` and not on the release branch, so the file reads
+came from the default-branch checkout. One full cycle cost about 0.33 USD.
+
+Corrections to earlier records:
+
+1. "Release tooling, stage 5 read": the row "Releasable units" and its Correction paragraph said
+   the code showed no type filter. Run `38250593500` shows a `chore:` commit alone opens no
+   release PR in the action's bundled release-please. The README list (feat, fix, deps) is the
+   behaviour seen. `release-please-action` v5.0.0 runs release-please **17.6.0** (log line
+   "Running release-please version: 17.6.0"), not the 17.11.2 that was read; where the filter
+   sits was not read. `perf`, `refactor`, `revert`, `style`, `docs`, `build` and `ci` were not
+   run.
+2. "`gh` CLI flags (#20)" and the stage 4 notes listed the comment permission as unverified. A
+   comment on a pull request through `POST /issues/{n}/comments` needs `pull-requests: write`;
+   `issues: write` with `pull-requests: read` was refused (HTTP 403, run `38255071190`). The raw
+   permission data lists the endpoint under both `issues` and `pull_requests` with the
+   "additional permissions" mark and does not say which applies to a pull request.
+3. "Release tooling (#21)": the unverified App-token question is closed for `pull_request` runs
+   on the release PR (above), one sample.
+
+Defects found by the fixtures or the live run, fixed before use:
+
+| Defect | Bug class | What caught it |
+|---|---|---|
+| `blocking=$(jq -er ...)` exits 1 for `false`, so every deferred item stopped the create step | `jq -e` on a boolean that may be `false` | a fixture with a `false` value |
+| Final comment refused: job had `pull-requests: read` | a write whose token permission was not checked before the live run | the live run; the stub `gh` does not model permissions |
+
+Gaps (recorded, not closed):
+
+| Gap | Why it matters | What would close it |
+|---|---|---|
+| `perf`, `refactor`, `revert` and the other types untested for a release PR | the git-workflow table says patch | one `refactor:` commit on a fresh baseline |
+| `release-blocker` merge or deploy gate not built | the review creates blockers, nothing refuses the merge | a job modelled on Patagonia's `blockers` job, its own change |
+| Owner-edited review comment read as it is | Sonnet parsing an edit not run; an editor who is not an owner is not checked | edit the comment, approve; a check of the comment's last editor |
+| Non-owner trigger and a non-release open PR not run | gate read from the expressions only | a second account; an open non-release PR |
+| One sample per model and per path | cost and quality variance unknown | more runs |
+| Marker lookup lists the last 300 issues | a repository with more would miss a marker | a bounded search or a label scan |
+| Release PR not merged, `READY TO LIVE` not exercised, tag and release not created | the gate evaluated at merge time is not built | merge #26 after the gate job exists |
+| Org setting "Create and approve pull requests" still on | the 4b step relies on it | move the 4b PR step to the App, then turn it off |
+| Installation on all repositories | the App can write contents, issues and PRs on every repository | the user's decision, recorded |
+| Review blank lines (two before `### Defer`) | cosmetic | renderer change if wanted |
+| Review comment not marked stale after a newer commit on `main` | the issues come from the review as approved | compare the review's SHA with `HEAD` in the gate |
