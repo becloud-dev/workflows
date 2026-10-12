@@ -2319,3 +2319,30 @@ repository outside the organisation; the callers stay on `@main` (Security desig
 run by the assistant on the user's instruction: the three grants revoked (read back: only
 `triage-sandbox` remains) and the scratch repository deleted (`gh repo list`: `workflows` and
 `triage-sandbox`).
+
+### Security design: facts read (2026-10-12)
+
+Source read (raw): `OWASP/Top10` `2025/docs/en` (`index.md`, `0x00_2025-Introduction.md` and
+the ten category pages `A01` to `A10`, Description sections; the folder's last commit is
+2026-09-24): Broken Access Control, Security Misconfiguration, Software Supply Chain Failures,
+Cryptographic Failures, Injection, Insecure Design, Authentication Failures, Software or Data
+Integrity Failures, Security Logging and Alerting Failures, Mishandling of Exceptional
+Conditions. `workflows` `dev-plan.yml` lines 109-167: the output schema and the jq validation
+cap `spec` at 8, `steps` at 10 and `acceptance_criteria` at 8 (2 to 8 required); the comment is
+built from the fields and the execution reads it as written. `zizmor` 1.30.1 on
+`templates/consumer/.github/workflows/release-gate.yml`: `dangerous-triggers` spans lines 3 to 12
+(the whole `on:` mapping); `docs/usage.md` ("Ignoring results"): an ignore comment is valid
+anywhere in the span of a finding when it is a YAML comment, and may carry an explanation.
+`rest-api-description` (`api.github.com.json`): `PATCH /repos/{owner}/{repo}/git/refs/{ref}`
+takes `sha` and `force`; a ruleset `target` is `branch`, `tag` or `push`. `release-please` v17.6.0
+`schemas/config.json`: `initial-version`, `bootstrap-sha`, `include-v-in-tag`,
+`force-tag-creation`.
+
+Inference: security controls, which are also acceptance criteria and tests, compete with the
+existing cap of 8; the cap is a decision of the stage 4 step. `workflows` has no tag, so its first
+release needs a seed tag or `bootstrap-sha`; a moving major tag is moved with `PATCH` and
+`force: true`.
+
+Not verified: that an ignore comment on the `workflow_run:` line suppresses only that finding
+(run in the `dangerous-triggers` step); rulesets for tags on a public repository of a free
+organisation; release-please behaviour on the `workflows` repository itself.
