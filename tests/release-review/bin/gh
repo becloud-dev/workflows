@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# stub gh: serves canned data from $FX, records posted comments
+set -euo pipefail
+args="$*"
+last="${*: -1}"
+case "$args" in
+  "api repos/"*"/pulls/"*) cat "$FX/pr.json" ;;
+  "api -X POST repos/"*"/issues/"*"/comments -f body="*) printf '%s\n----\n' "${last#body=}" >> "$FX/posted.txt" ;;
+  "api -X POST repos/"*"/issues/"*"/comments -F body=@"*) { cat "${last#body=@}"; printf '\n----\n'; } >> "$FX/posted.txt" ;;
+  "api --paginate repos/"*"/issues/"*"/comments --jq"*) jq -c '.[]' "$FX/comments.json" ;;
+  "issue list "*) cat "$FX/blockers.json" ;;
+  *) echo "stub gh: unhandled: $args" >&2; exit 99 ;;
+esac

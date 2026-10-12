@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+# stateful stub gh for release-issues fixtures
+set -euo pipefail
+args="$*"
+last="${*: -1}"
+st="$FX/state"; mkdir -p "$st/issues"
+case "$args" in
+  "api repos/"*"/pulls/"*) cat "$FX/pr.json" ;;
+  "api -X POST repos/"*"/issues/"*"/comments -f body="*) printf '%s\n----\n' "${last#body=}" >> "$FX/posted.txt" ;;
+  "api -X POST repos/"*"/issues/"*"/comments -F body=@"*) { cat "${last#body=@}"; printf '\n----\n'; } >> "$FX/posted.txt" ;;
+  "api --paginate repos/"*"/issues/"*"/comments --jq"*) jq -c '.[]' "$FX/comments.json" ;;
+  "issue list "*)
+    jq -s '[.[] | {number, body}]' "$st"/issues/*.json 2>/dev/null || echo '[]' ;;
+  "issue create "*)
+    [ "${STUB_FAIL_CREATE:-}" = 1 ] && { echo "stub: create failed" >&2; exit 1; }
+    title=""; file=""; labels=()
+    set -- "$@"
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --title) title="$2"; shift 2 ;;
+        --body-file) file="$2"; shift 2 ;;
+        --label) labels+=("$2"); shift 2 ;;
+        *) shift ;;
+      esac
+    done
+    n=$(cat "$st/next" 2>/dev/null || echo 100); echo $((n + 1)) > "$st/next"
+    jq -n --argjson n "$n" --arg t "$title" --rawfile b "$file" --args '{number:$n,title:$t,body:$b,labels:$ARGS.positional,type:"",prio:""}' "${labels[@]}" > "$st/issues/$n.json"
+    echo "https://github.com/$GITHUB_REPOSITORY/issues/$n" ;;
+  "issue edit "*"--add-label "*)
+    n=$3; jq --arg l "$last" '.labels += [$l] | .labels |= unique' "$st/issues/$n.json" > "$st/t" && mv "$st/t" "$st/issues/$n.json" ;;
+  "api -X PATCH repos/"*"/issues/"*)
+    n=$(echo "$4" | sed 's|.*/||')
+    if [ "${STUB_DROP_TYPE:-}" != 1 ]; then
+      jq --arg t "${6#type=}" '.type = $t' "$st/issues/$n.json" > "$st/t" && mv "$st/t" "$st/issues/$n.json"
+    fi ;;
+  "api -X POST repos/"*"/issue-field-values --input"*)
+    n=$(echo "$4" | sed 's|/issue-field-values||; s|.*/||')
+    v=$(jq -r '.issue_field_values[0].value' )
+    jq --arg v "$v" '.prio = $v' "$st/issues/$n.json" > "$st/t" && mv "$st/t" "$st/issues/$n.json" ;;
+  "api repos/"*"/issue-field-values")
+    n=$(echo "$2" | sed 's|/issue-field-values||; s|.*/||')
+    jq -c --argjson id "$FIELD_ID" '[ if .prio == "" then empty else {issue_field_id:$id, single_select_option:{name:.prio}} end ]' "$st/issues/$n.json" ;;
+  "api repos/"*"/issues/"*" --jq"*)
+    n=$(echo "$2" | sed 's|.*/||'); jq -r '.type' "$st/issues/$n.json" ;;
+  *) echo "stub gh: unhandled: $args" >&2; exit 99 ;;
+esac

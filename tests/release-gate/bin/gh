@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# Stub gh: serves fixture files from $FX, applies --jq with the real jq, logs POSTs.
+set -euo pipefail
+args=("$@")
+[ "${args[0]}" = api ] || { echo "stub: not api" >&2; exit 2; }
+jqexpr=""; path=""; post=0; fields=()
+i=1
+while [ $i -lt ${#args[@]} ]; do
+  a="${args[$i]}"
+  case "$a" in
+    --paginate) ;;
+    -X) i=$((i+1)); [ "${args[$i]}" = POST ] && post=1 ;;
+    --jq) i=$((i+1)); jqexpr="${args[$i]}" ;;
+    -f|-F) i=$((i+1)); fields+=("${args[$i]}") ;;
+    *) [ -z "$path" ] && path="$a" ;;
+  esac
+  i=$((i+1))
+done
+emit() { # file
+  if [ -n "$jqexpr" ]; then
+    jq -r "($jqexpr) | if type == \"string\" then . else tojson end" "$1"
+  else cat "$1"; fi
+}
+if [ "$post" = 1 ]; then
+  { printf '%s' "$path"; for f in "${fields[@]}"; do printf '\x1f%s' "$f"; done; printf '\n'; } >> "$FX/posts.log"
+  echo '{}'; exit 0
+fi
+R="$GITHUB_REPOSITORY"
+case "$path" in
+  graphql)
+    [ -f "$FX/graphql.fail" ] && { echo "gh: graphql failed" >&2; exit 1; }
+    cat "$FX/graphql.json" ;;
+  "repos/$R/pulls") emit "$FX/pulls.json" ;;
+  "repos/$R/issues") emit "$FX/blockers.json" ;;
+  "repos/$R") emit "$FX/repo.json" ;;
+  "repos/$R/commits/"*) emit "$FX/commit.json" ;;
+  "repos/$R/issues/"*/events) emit "$FX/events.json" ;;
+  "repos/$R/issues/"*/comments) emit "$FX/comments.json" ;;
+  *) echo "stub: unhandled $path" >&2; exit 2 ;;
+esac
