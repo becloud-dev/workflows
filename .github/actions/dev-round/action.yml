@@ -158,6 +158,7 @@ runs:
           {
             echo "Round $ROUND check findings:"
             jq -r '.findings[] | "- criterion \(.criterion): \(.problem)"' <<< "$CHECK"
+            jq -r '.criteria[] | select(.met | not) | "- criterion \(.criterion) is not met"' <<< "$CHECK"
             [ "${CHECK_EXIT:-0}" != 0 ] && echo "- the check command exited ${CHECK_EXIT}"
             [ "${TEST_EXIT:-0}" != 0 ] && echo "- the test command exited ${TEST_EXIT}"
           } > "$findings"
