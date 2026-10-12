@@ -29,7 +29,7 @@ runs:
         WORKFLOW: ${{ github.workflow }}
       run: |
         set -euo pipefail
-        out="$RUNNER_TEMP/run-record.json"
+        out="$RUNNER_TEMP/run-record-${STAGE//[^A-Za-z0-9._-]/_}.json"
         src="$EXEC"
         if [ -z "$src" ] || [ ! -s "$src" ]; then
           src="$RUNNER_TEMP/empty-execution.json"
