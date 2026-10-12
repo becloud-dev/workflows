@@ -2315,5 +2315,7 @@ repository in the organisation (one sample each).
 
 Not verified: `/approve` execution on a new repository (the pull request step meets the setting,
 accepted gap); the gate on a release PR with `READY TO LIVE` and a review; `SETUP_COMMAND`; a
-repository outside the organisation; the callers stay on `@main` (Security design). Cleanup: the
-scratch repository and its three grants are removed by the user.
+repository outside the organisation; the callers stay on `@main` (Security design). Cleanup,
+run by the assistant on the user's instruction: the three grants revoked (read back: only
+`triage-sandbox` remains) and the scratch repository deleted (`gh repo list`: `workflows` and
+`triage-sandbox`).
