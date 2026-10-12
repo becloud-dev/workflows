@@ -1,0 +1,84 @@
+name: release-gate
+
+on:
+  workflow_call:
+    inputs:
+      owners:
+        description: Comma-separated logins, no spaces
+        type: string
+        required: true
+      ready_label:
+        type: string
+        default: READY TO LIVE
+      blocker_label:
+        type: string
+        default: release-blocker
+
+permissions: {}
+
+jobs:
+  release-gate:
+    name: Release gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: read # list the open release-blocker issues and the label events
+      pull-requests: read # find the release pull request and its labels
+      statuses: write # set the release-gate status on the release pull request head
+    steps:
+      - name: Evaluate the gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OWNERS: ${{ inputs.owners }}
+          READY: ${{ inputs.ready_label }}
+          BLOCKER: ${{ inputs.blocker_label }}
+          EVENT_PR: ${{ github.event.pull_request.number }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          prs=$(gh api --paginate -X GET "repos/$GITHUB_REPOSITORY/pulls" -f state=open -f per_page=100 \
+            --jq '.[]' \
+            | jq -s --arg repo "$GITHUB_REPOSITORY" --argjson n "${EVENT_PR:-0}" \
+              '[.[] | select((.head.ref | startswith("release-please--branches--"))
+                 and ((.head.repo.full_name // "") == $repo)
+                 and ($n == 0 or .number == $n))]')
+          if [ "$(jq length <<< "$prs")" -eq 0 ]; then
+            echo "No open release pull request to evaluate."
+            exit 0
+          fi
+          blockers=$(gh api --paginate -X GET "repos/$GITHUB_REPOSITORY/issues" \
+            -f state=open -f labels="$BLOCKER" -f per_page=100 --jq '.[]' \
+            | jq -s '[.[] | select(.pull_request == null) | .number]')
+          for n in $(jq -r '.[].number' <<< "$prs"); do
+            sha=$(jq -r --argjson n "$n" '.[] | select(.number == $n) | .head.sha' <<< "$prs")
+            labeled=$(jq --arg l "$READY" --argjson n "$n" \
+              '.[] | select(.number == $n) | any(.labels[]; .name == $l)' <<< "$prs")
+            problems=()
+            if [ "$labeled" != true ]; then
+              problems+=("missing label $READY")
+            else
+              actor=$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$n/events" --jq '.[]' \
+                | jq -rs --arg l "$READY" \
+                  '[.[] | select(.event == "labeled" and .label.name == $l)] | last | .actor.login // ""')
+              case ",$OWNERS," in
+                *",$actor,"*) [ -n "$actor" ] || problems+=("$READY not set by an owner") ;;
+                *) problems+=("$READY not set by an owner") ;;
+              esac
+            fi
+            if [ "$(jq length <<< "$blockers")" -gt 0 ]; then
+              list=$(jq -r 'map("#\(.)") | join(", ")' <<< "$blockers")
+              problems+=("open $BLOCKER: $list")
+            fi
+            if [ "${#problems[@]}" -eq 0 ]; then
+              state=success
+              desc="$READY is set and no $BLOCKER issue is open"
+            else
+              state=failure
+              desc=$(IFS=';'; echo "${problems[*]}" | sed 's/;/; /g')
+            fi
+            desc=${desc:0:140}
+            gh api -X POST "repos/$GITHUB_REPOSITORY/statuses/$sha" \
+              -f state="$state" -f context=release-gate -f description="$desc" \
+              -f target_url="$RUN_URL" > /dev/null
+            echo "PR #$n ($sha): $state: $desc" | tee -a "$GITHUB_STEP_SUMMARY"
+          done
