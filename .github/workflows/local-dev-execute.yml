@@ -4,6 +4,8 @@ on:
   issue_comment:
     types: [created]
 
+permissions: {}
+
 jobs:
   dev-execute:
     if: ${{ !github.event.issue.pull_request && startsWith(github.event.comment.body, '/approve') }}
@@ -11,8 +13,8 @@ jobs:
       group: dev-execute-${{ github.event.issue.number }}
       cancel-in-progress: false
     permissions:
-      contents: read
-      issues: write
+      contents: read # check out the repository and the prompts
+      issues: write # comment
     uses: $/.github/workflows/dev-execute.yml
     with:
       execute_model: claude-haiku-5-5

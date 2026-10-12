@@ -23,7 +23,7 @@ jobs:
     timeout-minutes: 25
     if: contains(format(',{0},', inputs.owners), format(',{0},', github.event.sender.login))
     permissions:
-      contents: read
+      contents: read # check out the caller repository
       pull-requests: write # comment on the release PR
       issues: read # list the open release-blocker issues
     steps:

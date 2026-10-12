@@ -21,7 +21,7 @@ jobs:
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
           client-id: ${{ vars.APP_CLIENT_ID }}
-          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }} # zizmor: ignore[secrets-outside-env] the App key is a repository secret read by this job, which has no environment; an environment would change what it can read
           permission-contents: write
           permission-issues: write
           permission-pull-requests: write

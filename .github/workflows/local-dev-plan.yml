@@ -4,6 +4,8 @@ on:
   issues:
     types: [labeled]
 
+permissions: {}
+
 jobs:
   dev-plan:
     if: github.event.label.name == 'RELEASE'
@@ -11,8 +13,8 @@ jobs:
       group: dev-plan-${{ github.event.issue.number }}
       cancel-in-progress: false
     permissions:
-      contents: read
-      issues: write
+      contents: read # check out the repository and the prompts
+      issues: write # comment, add the needs-info label
     uses: $/.github/workflows/dev-plan.yml
     with:
       model: claude-sonnet-5-5

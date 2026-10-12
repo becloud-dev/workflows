@@ -28,7 +28,7 @@ jobs:
     timeout-minutes: 15
     if: contains(format(',{0},', inputs.owners), format(',{0},', github.event.sender.login))
     permissions:
-      contents: read
+      contents: read # check out the caller repository and the shared prompts
       issues: write # comment, add the needs-info label
     steps:
       - name: Check out the caller repository
@@ -157,7 +157,9 @@ jobs:
 
       - name: Set the UX record aside
         if: always() && steps.kind.outputs.type != 'Project'
-        run: cp "${{ steps.record_ux.outputs.record_path }}" "$RUNNER_TEMP/run-record-ux.json"
+        env:
+          RECORD: ${{ steps.record_ux.outputs.record_path }}
+        run: cp "$RECORD" "$RUNNER_TEMP/run-record-ux.json"
 
       - name: UI research
         id: ui

@@ -26,7 +26,7 @@ jobs:
     timeout-minutes: 10
     if: contains(format(',{0},', inputs.owners), format(',{0},', github.event.sender.login))
     permissions:
-      contents: read
+      contents: read # check out the caller repository
       issues: write # comment, label, set type and Priority, fix the body, create sub-issues
     steps:
       - name: Check out the caller repository

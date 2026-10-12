@@ -4,6 +4,8 @@ on:
   issue_comment:
     types: [created]
 
+permissions: {}
+
 jobs:
   release-review:
     if: ${{ github.event.issue.pull_request && (startsWith(github.event.comment.body, '/review') || startsWith(github.event.comment.body, '/reject')) }}
@@ -11,9 +13,9 @@ jobs:
       group: release-review-${{ github.event.issue.number }}
       cancel-in-progress: false
     permissions:
-      contents: read
-      pull-requests: write
-      issues: read
+      contents: read # read the repository
+      pull-requests: write # comment on the release PR
+      issues: read # list the open release-blocker issues
     uses: $/.github/workflows/release-review.yml
     with:
       model: claude-opus-5-5
