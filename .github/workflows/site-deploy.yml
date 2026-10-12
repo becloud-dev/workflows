@@ -1,0 +1,117 @@
+# Deploys a tagged Zola and Worker site of the calling repository with wrangler, only when no release-blocker issue is
+# open. The inputs reach the shell only through env, never through an expression in a run: block, and the Cloudflare
+# secrets reach only the credentials guard and the Wrangler step.
+name: site-deploy
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: Git ref of the caller repository to deploy, a release tag
+        type: string
+        required: true
+      node_version:
+        description: Node.js version to install
+        type: string
+        default: '24'
+      check_command:
+        description: Command that checks the site, run with bash -c
+        type: string
+        default: npm run check
+      build_command:
+        description: Command that builds the site, run with bash -c
+        type: string
+        default: npm run build
+    secrets:
+      cloudflare_api_token:
+        description: Cloudflare API token that may deploy the Worker
+        required: true
+      cloudflare_account_id:
+        description: Cloudflare account id that owns the Worker
+        required: true
+
+permissions: {}
+
+jobs:
+  blockers:
+    name: Open release blockers
+    runs-on: ubuntu-latest
+    permissions:
+      issues: read # list the open release-blocker issues
+    steps:
+      - name: List the open release blockers
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          blockers=$(gh issue list --label release-blocker --state open --limit 100 \
+            --json number,title --jq '.[] | "- #\(.number) \(.title)"')
+          if [ -n "$blockers" ]; then
+            echo "Open release-blocker issues block the deploy:"
+            echo "$blockers"
+            { echo "### Open release-blocker issues"; echo "$blockers"; } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+  deploy:
+    name: Deploy the site
+    needs: blockers
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read # check out the caller repository at the tagged ref
+    # A deploy in progress finishes; the next one waits for it instead of cancelling it.
+    concurrency:
+      group: deploy
+      cancel-in-progress: false
+    steps:
+      - name: Check out the caller repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ inputs.node_version }}
+          # Nothing is restored from or saved to the package cache in a job that publishes.
+          package-manager-cache: false
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Zola
+        uses: $/.github/actions/install-zola
+
+      - name: Run the check command
+        env:
+          CHECK: ${{ inputs.check_command }}
+        run: bash -c "$CHECK"
+
+      - name: Run the build command
+        env:
+          BUILD: ${{ inputs.build_command }}
+        run: bash -c "$BUILD"
+
+      - name: Require the Cloudflare credentials
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.cloudflare_api_token }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.cloudflare_account_id }}
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
+            echo "::error::The cloudflare_api_token secret is empty"
+            exit 1
+          fi
+          if [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "::error::The cloudflare_account_id secret is empty"
+            exit 1
+          fi
+
+      - name: Deploy with Wrangler
+        uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4.1.3
+        with:
+          command: deploy
+          apiToken: ${{ secrets.cloudflare_api_token }}
+          accountId: ${{ secrets.cloudflare_account_id }}
