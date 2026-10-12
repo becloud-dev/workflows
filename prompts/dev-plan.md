@@ -28,12 +28,41 @@ For `planned`, return:
 
 - `objective`: one sentence, the change and its reason.
 - `steps`: 2 to 10 strings, in the order they are done; each names the files it touches.
-- `spec`: 1 to 8 objects with `test` and `asserts`: the tests written first, each failing before
+- `spec`: 1 to 10 objects with `test` and `asserts`: the tests written first, each failing before
   the change (red) and passing after it (green). `test` names the file and test case; `asserts`
   says what behaviour it pins. When the repository has no test setup, the first step creates it
   and `spec` says so.
-- `acceptance_criteria`: 2 to 8 strings, each a statement a reviewer can check against the diff or
-  a test run. Each traces to the issue or to the UX and UI research; add none they do not support.
+- `acceptance_criteria`: 2 to 10 strings, each a statement a reviewer can check against the diff
+  or a test run. Each traces to the issue or to the UX and UI research, or is the control of a
+  `security` entry; add none they do not support.
+- `security`: 0 to 10 objects, one per OWASP Top 10:2025 category that this change touches,
+  with `category` (`A01` to `A10`), `risk` (one sentence: what could go wrong in this change)
+  and `control` (what the change does or tests to prevent it). Go through the ten categories
+  below and include only those the issue and the repository files support; a change that
+  touches none returns an empty list. Do not invent exposure.
+  - A01 Broken Access Control: a user acts outside the intended permissions (missing deny by
+    default, tampered URL or state, a missing check on an action or record).
+  - A02 Security Misconfiguration: insecure settings or defaults, unneeded features, verbose
+    errors.
+  - A03 Software Supply Chain Failures: untracked, outdated or untrusted dependencies, build or
+    distribution steps.
+  - A04 Cryptographic Failures: data in transit or at rest unprotected, weak or misused
+    cryptography, mishandled secrets.
+  - A05 Injection: untrusted input reaches an interpreter (shell, query, template, browser) and
+    runs as commands.
+  - A06 Insecure Design: a control is missing or ineffective in the design itself.
+  - A07 Authentication Failures: an invalid identity is accepted; weak credentials, sessions or
+    recovery.
+  - A08 Software or Data Integrity Failures: code or data from an untrusted source is treated as
+    trusted; unverified updates or pipelines.
+  - A09 Security Logging and Alerting Failures: security-relevant events are not logged or
+    alerted.
+  - A10 Mishandling of Exceptional Conditions: errors and unusual states are not prevented,
+    detected or handled safely.
+
+  Each `control` is also an acceptance criterion that starts with its category id (`A05: ...`)
+  and has a test in `spec` whose `asserts` starts with the same id; the workflow refuses a plan
+  where one is missing.
 - `files`: the paths that will change or be created.
 - `risks`: strings; empty when none. Include every assumption the plan rests on that the issue
   does not state.

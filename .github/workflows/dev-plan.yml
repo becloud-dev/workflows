@@ -106,7 +106,7 @@ jobs:
           claude_args: |
             --model ${{ inputs.model }}
             --allowedTools "Read,Grep,Glob"
-            --json-schema '{"type":"object","properties":{"outcome":{"type":"string","enum":["planned","needs_info"]},"rationale":{"type":"string"},"questions":{"type":"array","items":{"type":"string"},"maxItems":5},"objective":{"type":"string"},"steps":{"type":"array","items":{"type":"string"},"maxItems":10},"spec":{"type":"array","maxItems":8,"items":{"type":"object","properties":{"test":{"type":"string"},"asserts":{"type":"string"}},"required":["test","asserts"]}},"acceptance_criteria":{"type":"array","items":{"type":"string"},"maxItems":8},"files":{"type":"array","items":{"type":"string"}},"risks":{"type":"array","items":{"type":"string"}}},"required":["outcome","rationale"]}'
+            --json-schema '{"type":"object","properties":{"outcome":{"type":"string","enum":["planned","needs_info"]},"rationale":{"type":"string"},"questions":{"type":"array","items":{"type":"string"},"maxItems":5},"objective":{"type":"string"},"steps":{"type":"array","items":{"type":"string"},"maxItems":10},"spec":{"type":"array","maxItems":10,"items":{"type":"object","properties":{"test":{"type":"string"},"asserts":{"type":"string"}},"required":["test","asserts"]}},"acceptance_criteria":{"type":"array","items":{"type":"string"},"maxItems":10},"security":{"type":"array","maxItems":10,"items":{"type":"object","properties":{"category":{"type":"string","enum":["A01","A02","A03","A04","A05","A06","A07","A08","A09","A10"]},"risk":{"type":"string"},"control":{"type":"string"}},"required":["category","risk","control"]}},"files":{"type":"array","items":{"type":"string"}},"risks":{"type":"array","items":{"type":"string"}}},"required":["outcome","rationale"]}'
 
       - name: Post the plan
         if: steps.plan.outputs.structured_output != ''
@@ -135,8 +135,14 @@ jobs:
           fi
           jq -e '(.objective | type == "string" and length > 0)
                  and (.steps | type == "array" and length >= 2 and length <= 10)
-                 and (.spec | type == "array" and length >= 1 and length <= 8)
-                 and (.acceptance_criteria | type == "array" and length >= 2 and length <= 8)
+                 and (.spec | type == "array" and length >= 1 and length <= 10)
+                 and (.acceptance_criteria | type == "array" and length >= 2 and length <= 10)
+                 and (.security | type == "array" and length <= 10)
+                 and all(.security[]; .category | test("^A(0[1-9]|10)$"))
+                 and ([.security[].category] | length == (unique | length))
+                 and (. as $p | all(.security[]; . as $s
+                       | any($p.acceptance_criteria[]; startswith($s.category + ":"))
+                         and any($p.spec[]; .asserts | startswith($s.category + ":"))))
                  and (.files | type == "array" and length >= 1)
                  and (.risks | type == "array")' "$f" > /dev/null
           {
@@ -153,6 +159,13 @@ jobs:
             echo
             echo '**Acceptance criteria**'
             jq -r '.acceptance_criteria | to_entries[] | "\(.key + 1). \(.value)"' "$f"
+            echo
+            if [ "$(jq '.security | length' "$f")" -gt 0 ]; then
+              echo '**Security** (OWASP Top 10:2025)'
+              jq -r '.security[] | "- \(.category): \(.risk) Control: \(.control)"' "$f"
+            else
+              echo '**Security** (OWASP Top 10:2025): no category applies.'
+            fi
             echo
             echo '**Files**'
             jq -r '.files[] | "- `\(.)`"' "$f"
