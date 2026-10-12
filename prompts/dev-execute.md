@@ -19,7 +19,9 @@ Work in this order:
 
 1. Write or extend the tests named under "Tests first". Run the test command and read its
    result: the new tests must fail for the reason the plan states (red). If one passes before
-   the change, it does not pin the behaviour; fix the test first.
+   the change, it does not pin the behaviour; fix the test first. After you finish, the workflow
+   runs the test command again on the base tree with your new test files; a pass there fails the
+   round, whatever `red_seen` says.
 2. Make the change the steps describe, in the files the plan lists. Run the check command and
    the test command; both must pass (green).
 3. Commit with `git add` and `git commit`: Conventional Commits, `<type>(<scope>): <description>`,

@@ -12,7 +12,11 @@ Inputs, in this order:
 1. The plan file whose path is given in the prompt: objective, acceptance criteria, files, tests
    first.
 2. The results file whose path is given in the prompt: the exit code and the output tail of the
-   check command and of the test command, run by the workflow after the executor finished.
+   check command and of the test command, run by the workflow after the executor finished, and a
+   `red check` section: the test command run on the base tree with the new test files. Its
+   `state` is `red` (the tests fail before the change, as expected), `green_on_base` (the workflow
+   already fails the round), `none` or `error` (not evidenced). The executor's own `red_seen` is
+   a claim; this section is the evidence.
 3. The change itself: `git diff <base>...HEAD` for the base given in the prompt, and `git log
    <base>..HEAD --format=%s` for the commit subjects. Read changed files in full with `Read`
    when the diff alone is not enough.

@@ -13,6 +13,7 @@ inputs:
   check_model: {required: true}
   check_command: {required: false, default: ""}
   test_command: {required: false, default: ""}
+  test_paths: {required: false, default: "", description: "Comma-separated globs of test files; empty turns the red check off"}
 outputs:
   outcome:
     description: done, blocked or failed
@@ -100,6 +101,54 @@ runs:
         run_one test "$TEST"
         echo "results_file=$out" >> "$GITHUB_OUTPUT"
 
+    # the new tests must fail on the base tree: run the test command there with the test files
+    # of this change and record the exit code; a pass on the base forces fail in the verdict step
+    - id: red
+      if: steps.commands.outcome == 'success'
+      shell: bash
+      env:
+        TEST: ${{ inputs.test_command }}
+        TEST_PATHS: ${{ inputs.test_paths }}
+        BASE: ${{ inputs.base }}
+        ROUND: ${{ inputs.round }}
+        RESULTS: ${{ steps.commands.outputs.results_file }}
+      run: |
+        set -uo pipefail
+        state=none code="" files=()
+        if [ -n "$TEST" ] && [ -n "$TEST_PATHS" ]; then
+          if changed=$(git diff --name-only --diff-filter=AMR "$BASE...HEAD" 2> /dev/null); then
+            IFS=, read -ra globs <<< "$TEST_PATHS"
+            while IFS= read -r f; do
+              [ -n "$f" ] || continue
+              for g in "${globs[@]}"; do
+                case "$f" in $g) files+=("$f"); break ;; esac
+              done
+            done <<< "$changed"
+          else
+            state=error
+          fi
+        fi
+        if [ "${#files[@]}" -gt 0 ]; then
+          tree="$RUNNER_TEMP/base-tree-$ROUND"
+          log="$RUNNER_TEMP/red-$ROUND.log"
+          if git worktree add --detach "$tree" "$BASE" > "$log" 2>&1 \
+             && git -C "$tree" checkout "$(git rev-parse HEAD)" -- "${files[@]}" >> "$log" 2>&1; then
+            code=0
+            (cd "$tree" && bash -c "$TEST") >> "$log" 2>&1 || code=$?
+            if [ "$code" = 0 ]; then state=green_on_base; else state=red; fi
+          else
+            state=error
+          fi
+          git worktree remove --force "$tree" > /dev/null 2>&1 || true
+          {
+            printf '### red check\nstate: %s\ntest files: %s\nexit code on the base tree: %s\n```\n%s\n```\n\n' \
+              "$state" "${files[*]}" "${code:-n/a}" "$(tail -n 30 "$log" | tail -c 2000)"
+          } >> "$RESULTS"
+        else
+          printf '### red check\nstate: %s (no test file in the diff, not configured, or the diff failed)\n\n' "$state" >> "$RESULTS"
+        fi
+        echo "red_state=$state" >> "$GITHUB_OUTPUT"
+
     - id: check
       if: steps.commands.outcome == 'success'
       uses: anthropics/claude-code-action@1d6de8cb0c237e7c15e9e1bdf973826ebae490cc # v1.0.248
@@ -136,6 +185,7 @@ runs:
         CHECK: ${{ steps.check.outputs.structured_output }}
         CHECK_EXIT: ${{ steps.commands.outputs.check_exit }}
         TEST_EXIT: ${{ steps.commands.outputs.test_exit }}
+        RED_STATE: ${{ steps.red.outputs.red_state }}
         ROUND: ${{ inputs.round }}
       run: |
         set -uo pipefail
@@ -152,6 +202,7 @@ runs:
           verdict=$(jq -r .verdict <<< "$CHECK")
           # mechanism, not prose: a non-zero command forces fail
           if [ "${CHECK_EXIT:-0}" != 0 ] || [ "${TEST_EXIT:-0}" != 0 ] \
+             || [ "${RED_STATE:-none}" = green_on_base ] \
              || [ "$(jq '[.criteria[] | select(.met | not)] | length' <<< "$CHECK")" -gt 0 ]; then
             verdict=fail
           fi
@@ -161,6 +212,7 @@ runs:
             jq -r '.criteria[] | select(.met | not) | "- criterion \(.criterion) is not met"' <<< "$CHECK"
             [ "${CHECK_EXIT:-0}" != 0 ] && echo "- the check command exited ${CHECK_EXIT}"
             [ "${TEST_EXIT:-0}" != 0 ] && echo "- the test command exited ${TEST_EXIT}"
+            [ "${RED_STATE:-none}" = green_on_base ] && echo "- the new tests pass on the base tree; they do not pin the change"
           } > "$findings"
         else
           echo "The round produced no valid result." > "$findings"

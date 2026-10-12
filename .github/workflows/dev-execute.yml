@@ -28,6 +28,11 @@ on:
         type: string
         required: false
         default: ""
+      test_paths:
+        description: Comma-separated globs of test files, no spaces; the new tests must fail on the base tree; empty for none
+        type: string
+        required: false
+        default: ""
     secrets:
       claude_code_oauth_token:
         required: true
@@ -140,6 +145,7 @@ jobs:
           check_model: ${{ inputs.check_model }}
           check_command: ${{ inputs.check_command }}
           test_command: ${{ inputs.test_command }}
+          test_paths: ${{ inputs.test_paths }}
 
       - name: Round 2
         id: r2
@@ -159,6 +165,7 @@ jobs:
           check_model: ${{ inputs.check_model }}
           check_command: ${{ inputs.check_command }}
           test_command: ${{ inputs.test_command }}
+          test_paths: ${{ inputs.test_paths }}
 
       - name: Round 3
         id: r3
@@ -178,6 +185,7 @@ jobs:
           check_model: ${{ inputs.check_model }}
           check_command: ${{ inputs.check_command }}
           test_command: ${{ inputs.test_command }}
+          test_paths: ${{ inputs.test_paths }}
 
       - name: Decide what to publish
         id: final
