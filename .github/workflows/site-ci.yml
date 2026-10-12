@@ -1,0 +1,47 @@
+# Checks a Zola and Worker site of the calling repository. The check command reaches the shell only
+# through the CHECK environment variable, never through an expression in a run: block.
+name: site-ci
+
+on:
+  workflow_call:
+    inputs:
+      node_version:
+        description: Node.js version to install
+        type: string
+        default: '24'
+      check_command:
+        description: Command that checks the site, run with bash -c
+        type: string
+        default: npm run check
+
+permissions: {}
+
+jobs:
+  checks:
+    name: Site checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read # check out the caller repository
+    steps:
+      - name: Check out the caller repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ inputs.node_version }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Zola
+        uses: $/.github/actions/install-zola
+
+      - name: Run the check command
+        env:
+          CHECK: ${{ inputs.check_command }}
+        run: bash -c "$CHECK"
