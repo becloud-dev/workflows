@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# stub gh for the blockers step of site-deploy.yml: `issue list` prints the issues of the fixture $GH_FIXTURE, through the
+# --jq expression when one is given, as the real gh does; every call is logged to $GH_LOG.
+set -euo pipefail
+echo "gh $*" >> "$GH_LOG"
+[ "${1:-} ${2:-}" = "issue list" ] || { echo "stub gh: unhandled: $*" >&2; exit 99; }
+shift 2
+expr=""
+while [ $# -gt 0 ]; do
+  case $1 in
+    --jq) expr=$2; shift 2 ;;
+    *) shift ;;
+  esac
+done
+if [ -n "$expr" ]; then jq -r "$expr" "$GH_FIXTURE"; else cat "$GH_FIXTURE"; fi

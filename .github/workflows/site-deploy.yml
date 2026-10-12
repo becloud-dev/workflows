@@ -1,0 +1,109 @@
+# Deploys a tagged Zola and Worker site of the calling repository with Wrangler. The deploy waits for the release-blocker
+# check: it runs only when no release-blocker issue is open. The check and build commands reach the shell only through
+# the CHECK and BUILD environment variables, never through an expression in a run: block, and the Cloudflare secrets are
+# read only by the credentials guard and the Wrangler step.
+name: site-deploy
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: Tag to deploy, checked out from the calling repository
+        type: string
+        required: true
+      node_version:
+        description: Node.js version to install
+        type: string
+        default: '24'
+      check_command:
+        description: Command that checks the site, run with bash -c
+        type: string
+        default: npm run check
+      build_command:
+        description: Command that builds the site, run with bash -c
+        type: string
+        default: npm run build
+    secrets:
+      cloudflare_api_token:
+        description: Cloudflare API token that may deploy the Worker
+        required: true
+      cloudflare_account_id:
+        description: Cloudflare account that owns the Worker
+        required: true
+
+permissions: {}
+
+jobs:
+  blockers:
+    name: Release blockers
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: read # list the open release-blocker issues
+    steps:
+      - name: List the open release blockers
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          blockers=$(gh issue list --label release-blocker --state open --json number,title --jq '.[] | "#\(.number) \(.title)"')
+          if [ -n "$blockers" ]; then
+            echo "Open release-blocker issues:"
+            printf '%s\n' "$blockers"
+            { echo "## Open release blockers"; printf '%s\n' "$blockers" | sed 's/^/- /'; } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+  deploy:
+    name: Deploy
+    needs: blockers
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read # check out the tagged ref of the caller repository
+    concurrency:
+      group: deploy
+      cancel-in-progress: false # a deploy in progress finishes; a later one waits for it
+    steps:
+      - name: Check out the tagged ref
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ inputs.node_version }}
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Zola
+        uses: $/.github/actions/install-zola
+
+      - name: Run the check command
+        env:
+          CHECK: ${{ inputs.check_command }}
+        run: bash -c "$CHECK"
+
+      - name: Run the build command
+        env:
+          BUILD: ${{ inputs.build_command }}
+        run: bash -c "$BUILD"
+
+      - name: Require the Cloudflare credentials
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.cloudflare_api_token }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.cloudflare_account_id }}
+        run: |
+          [ -n "$CLOUDFLARE_API_TOKEN" ] || { echo "::error::the cloudflare_api_token secret is empty"; exit 1; }
+          [ -n "$CLOUDFLARE_ACCOUNT_ID" ] || { echo "::error::the cloudflare_account_id secret is empty"; exit 1; }
+
+      - name: Deploy with Wrangler
+        uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4.1.3
+        with:
+          command: deploy
+          apiToken: ${{ secrets.cloudflare_api_token }}
+          accountId: ${{ secrets.cloudflare_account_id }}

@@ -1,14 +1,17 @@
-import re, sys, yaml
+import json, os, re, sys, yaml
 
-# usage: check.py <site-ci or site-e2e workflow file>
+# usage: check.py <site workflow file>
 # Enforces the rules of the reusable site workflows: one FAIL line per violation, named by rule, and exit 1.
 path = sys.argv[1]
 doc = yaml.safe_load(open(path)) or {}
 text = open(path).read()
 bad = []
+DEPLOY = os.path.basename(path) == "site-deploy.yml"
 PIN = re.compile(r"[0-9a-f]{40}")
 BROWSERS_CHECK = "^[a-z]+( [a-z]+)*$"
-INPUT_ENV = {"BROWSERS": "${{ inputs.browsers }}", "E2E": "${{ inputs.e2e_command }}"}
+INPUT_ENV = {"BROWSERS": "${{ inputs.browsers }}", "E2E": "${{ inputs.e2e_command }}",
+             "CHECK": "${{ inputs.check_command }}", "BUILD": "${{ inputs.build_command }}"}
+GUARD, WRANGLER = "Require the Cloudflare credentials", "Deploy with Wrangler"
 
 def fail(rule, detail): bad.append(f"FAIL  {rule}: {detail}")
 
@@ -22,7 +25,8 @@ on = doc.get("on", doc.get(True))
 events = {on} if isinstance(on, str) else set(on or [])
 if events != {"workflow_call"}: fail("only-workflow-call", f"triggers are {sorted(events)}")
 if "permissions" not in doc or doc["permissions"] != {}: fail("top-level-permissions", "must be {}")
-if re.search(r"secrets\.", text): fail("secrets-reference", "the file refers to secrets.")
+# Only site-deploy.yml may refer to secrets; its uses are checked below. Every other site workflow must not.
+if not DEPLOY and re.search(r"secrets\.", text): fail("secrets-reference", "the file refers to secrets.")
 inputs = (((on if isinstance(on, dict) else {}).get("workflow_call") or {}).get("inputs")) or {}
 
 steps = []
@@ -62,6 +66,27 @@ for where, step in steps:
         with_ = step.get("with") or {}
         if step.get("if") != "failure()" or with_.get("path") != "playwright-report/" or with_.get("retention-days") != 14 or with_.get("if-no-files-found") != "ignore":
             fail("upload-artifact", f"{where} must upload playwright-report/ on failure with retention-days 14 and if-no-files-found: ignore")
+
+# site-deploy.yml only: a secret is read by the credentials guard or the Wrangler step, through its env or with, and
+# nowhere else. The deploy job needs the blockers, runs one deploy at a time and never restores a cache.
+if DEPLOY:
+    reads = 0
+    for where, step in steps:
+        n = len(re.findall(r"secrets\.", json.dumps(step)))
+        if not n: continue
+        reads += n
+        scoped = len(re.findall(r"secrets\.", json.dumps({k: step.get(k) for k in ("env", "with")})))
+        if step.get("name") not in (GUARD, WRANGLER) or scoped != n:
+            fail("secrets-scope", f"{where} reads a secret outside its env or with, or outside the guard and Wrangler steps")
+    if reads != len(re.findall(r"secrets\.", text)): fail("secrets-scope", "a secret is read outside the steps")
+    deploy = (doc.get("jobs") or {}).get("deploy") or {}
+    needs = deploy.get("needs") or []
+    if "blockers" not in ([needs] if isinstance(needs, str) else needs): fail("deploy-needs-blockers", "job deploy does not need blockers")
+    if deploy.get("concurrency") != {"group": "deploy", "cancel-in-progress": False}:
+        fail("concurrency", "job deploy is not in concurrency group deploy with cancel-in-progress false")
+    for step in deploy.get("steps") or []:
+        if step.get("uses", "").startswith("actions/setup-node@") and "cache" in (step.get("with") or {}):
+            fail("setup-node-cache", f"job deploy sets up Node.js with a cache: {step.get('name')}")
 
 for line in bad: print(line)
 if not bad: print(f"OK    {path}")
