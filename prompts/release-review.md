@@ -20,8 +20,26 @@ What to look for, in order:
 
 1. Correctness: logic that would break behaviour or lose data, wrong results, unhandled failure
    paths, a changed contract with a caller that was not updated.
-2. Safety: secrets in code, access that is bypassed or weakened, unescaped input reaching a
-   shell, a query or a page.
+2. Safety, against the OWASP Top 10:2025 categories. Name the category in the `body` of a
+   finding, as its id and name (`A05 Injection: ...`). The categories:
+   - A01 Broken Access Control: a check that is missing or can be bypassed (permissions,
+     ownership, deny by default, a tampered URL or state).
+   - A02 Security Misconfiguration: insecure settings or defaults, unneeded features or
+     accounts, verbose errors.
+   - A03 Software Supply Chain Failures: dependencies or build steps that are untracked,
+     unpinned, outdated or untrusted.
+   - A04 Cryptographic Failures: data in transit or at rest unprotected, weak or misused
+     cryptography, secrets in code or logs.
+   - A05 Injection: untrusted input reaching a shell, a query, a template or a page unescaped.
+   - A06 Insecure Design: a control that is missing or ineffective in the design itself.
+   - A07 Authentication Failures: an invalid identity is accepted; weak credentials, sessions
+     or recovery.
+   - A08 Software or Data Integrity Failures: code or data from an untrusted source is treated
+     as trusted; unverified updates or pipelines.
+   - A09 Security Logging and Alerting Failures: security-relevant events are not logged or
+     alerted.
+   - A10 Mishandling of Exceptional Conditions: errors and unusual states are not prevented,
+     detected or handled safely.
 3. Rules: an explicit rule in `AGENTS.md` or `CLAUDE.md` that the change breaks.
 4. Tests: changed behaviour with no test that pins it, when the project has tests.
 
