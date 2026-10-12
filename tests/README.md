@@ -20,6 +20,7 @@ upstream binary is downloaded to `tests/.cache/jq` and its SHA-256 is verified b
 | `dev-plan-post` | "Post the plan" of `dev-plan.yml`: structure, security links, refusal comment |
 | `dev-round` | tools, commands and verdict steps of the `dev-round` composite |
 | `dev-round-red` | the red check: new tests must fail on the base tree |
+| `install-zola` | the `install-zola` composite: pinned version, checksum and version check, nothing installed on failure |
 | `record-run` | what a run record holds and how it is named |
 | `release-gate` | owner label, blockers, stale or edited review; also mutates the step |
 | `release-issues` | approval gate and issue creation |

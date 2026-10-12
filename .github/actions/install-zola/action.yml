@@ -1,0 +1,39 @@
+name: install-zola
+description: Install a pinned, checksum- and version-verified Zola release on a Linux x86_64 runner
+inputs:
+  version:
+    description: Zola version, X.Y.Z
+    required: false
+    default: "0.23.6"
+  sha256:
+    description: SHA-256 of the official linux x86_64 gnu tarball for that version
+    required: false
+    default: "8f5132b3522412d04e395e0b25f6d68613ad272a873e54a2b3ebf664873024a4"
+runs:
+  using: composite
+  steps:
+    - id: install
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+        SHA256: ${{ inputs.sha256 }}
+      run: |
+        set -euo pipefail
+        die() { echo "::error::$*"; exit 1; }
+        [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "invalid version: expected X.Y.Z"
+        [[ "$SHA256" =~ ^[0-9a-f]{64}$ ]] || die "invalid sha256: expected 64 lower-case hex characters"
+        url=${ZOLA_URL:-https://github.com/getzola/zola/releases/download/v$VERSION/zola-v$VERSION-x86_64-unknown-linux-gnu.tar.gz}
+        dest=${ZOLA_DEST:-/usr/local/bin}
+        tmp=$(mktemp -d)
+        trap 'rm -rf "$tmp"' EXIT
+        curl -fsSL --retry 3 -o "$tmp/zola.tar.gz" "$url" || die "download failed: $url"
+        actual=$(sha256sum "$tmp/zola.tar.gz" | cut -d' ' -f1)
+        [ "$actual" = "$SHA256" ] || die "checksum mismatch: expected $SHA256, got $actual"
+        tar -xzf "$tmp/zola.tar.gz" -C "$tmp" zola
+        reported=$("$tmp/zola" --version)
+        [ "$reported" = "zola $VERSION" ] || die "unexpected version: got '$reported', expected 'zola $VERSION'"
+        if [ -w "$dest" ]; then
+          install -m 0755 "$tmp/zola" "$dest/zola"
+        else
+          sudo install -m 0755 "$tmp/zola" "$dest/zola"
+        fi
