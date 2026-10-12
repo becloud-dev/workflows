@@ -20,15 +20,18 @@
     <button type="submit" class="primary">Check answer</button>
   </form>
   <div id="feedback" aria-live="polite"></div>
-  {# Pulled into #feedback by the Worker's answer through hx-select; hidden until then. #}
-  <section id="rationale" hidden>
-    <h2>Why</h2>
-    <p>{{ page.extra.rationale.summary }}</p>
-    <ul>
-      {% for o in page.extra.options %}
-      <li><strong>{{ o.id }}.</strong> {{ page.extra.rationale.breakdown[o.id] }}</li>
-      {% endfor %}
-    </ul>
-  </section>
+  {# The rationale waits in a hidden slot; the Worker's answer pulls the section itself into #feedback with
+     hx-select, so the copy that arrives is visible (a `hidden` on the section would travel with it). #}
+  <div hidden>
+    <section id="rationale">
+      <h2>Why</h2>
+      <p>{{ page.extra.rationale.summary }}</p>
+      <ul>
+        {% for o in page.extra.options %}
+        <li><strong>{{ o.id }}.</strong> {{ page.extra.rationale.breakdown[o.id] }}</li>
+        {% endfor %}
+      </ul>
+    </section>
+  </div>
 </article>
 {% endblock content %}

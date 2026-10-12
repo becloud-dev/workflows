@@ -3,6 +3,10 @@
 {% block content %}
 <h1>{{ section.title }}</h1>
 {{ section.content | safe }}
+{% if section.extra.progress %}
+{# How many topics this visitor completed: the Worker reads the progress cookie. #}
+<div id="progress-summary" hx-get="/x/progress" hx-trigger="load" hx-swap="outerHTML"></div>
+{% endif %}
 <ul class="cards">
   {% for page in section.pages %}
   <li><a href="{{ page.permalink }}">{{ page.title }}</a></li>

@@ -9,8 +9,8 @@ import { domainSchema, pageSchema, questionExtraSchema, topicExtraSchema } from 
 
 export type Answers = {
   topics: string[]
-  questions: Record<string, { domain: number; correct: string; options: string[] }>
-  domains: { id: number; weight: number }[]
+  questions: Record<string, { domain: number; correct: string; text: string; options: { id: string; text: string }[] }>
+  domains: { id: number; title: string; weight: number }[]
 }
 export type Result = { ok: true; answers: Answers } | { ok: false; errors: string[] }
 
@@ -85,11 +85,11 @@ export function validateContent(root: string): Result {
     if (!optionIds.includes(q.correct)) fail(file, `correct ${q.correct} is not among the options ${optionIds.join(', ')}`)
     const explained = Object.keys(q.rationale.breakdown).sort().join('')
     if (explained !== [...optionIds].sort().join('')) fail(file, `rationale.breakdown must explain exactly the options ${optionIds.join(', ')}`)
-    questions[q.question_id] = { domain: q.domain_id, correct: q.correct, options: optionIds }
+    questions[q.question_id] = { domain: q.domain_id, correct: q.correct, text: q.question_text, options: q.options }
   }
 
   if (errors.length > 0) return { ok: false, errors }
-  return { ok: true, answers: { topics, questions, domains: domains.map(({ id, weight }) => ({ id, weight })) } }
+  return { ok: true, answers: { topics, questions, domains: domains.map(({ id, title, weight }) => ({ id, title, weight })) } }
 }
 
 function readFront(file: string, fail: (file: string, message: string) => void): unknown | undefined {

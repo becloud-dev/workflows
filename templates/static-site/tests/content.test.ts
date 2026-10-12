@@ -55,10 +55,18 @@ describe('validateContent', () => {
     expect(result.ok).toBe(true)
     if (!result.ok) return
     expect(result.answers.topics).toEqual(['a-topic'])
-    expect(result.answers.questions.q1).toEqual({ domain: 2, correct: 'B', options: ['A', 'B'] })
+    expect(result.answers.questions.q1).toEqual({
+      domain: 2,
+      correct: 'B',
+      text: 'Which one?',
+      options: [
+        { id: 'A', text: 'First' },
+        { id: 'B', text: 'Second' },
+      ],
+    })
     expect(result.answers.domains).toEqual([
-      { id: 1, weight: 40 },
-      { id: 2, weight: 60 },
+      { id: 1, title: 'Fundamentals', weight: 40 },
+      { id: 2, title: 'Applications', weight: 60 },
     ])
   })
 

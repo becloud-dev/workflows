@@ -1,0 +1,20 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "study-site",
+  "main": "src/index.tsx",
+  "compatibility_date": "2026-09-30",
+  // Static pages (built by Zola into public/) are served by the assets layer without running the Worker.
+  // Only the logic routes under /x/ reach the Worker.
+  "assets": {
+    "directory": "public",
+    "binding": "ASSETS",
+    "html_handling": "auto-trailing-slash",
+    "not_found_handling": "404-page",
+    "run_worker_first": ["/x/*"]
+  },
+  "vars": {
+    "EXAM_QUESTIONS": "65",
+    "EXAM_MINUTES": "90"
+  },
+  "observability": { "enabled": true }
+}

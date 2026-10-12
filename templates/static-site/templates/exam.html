@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}{{ section.title }} · {{ config.title }}{% endblock title %}
+{% block content %}
+<h1>{{ section.title }}</h1>
+{{ section.content | safe }}
+{# The whole exam (start, questions, timer, report) is fragments from the Worker, driven by the cookie. #}
+<div id="exam" hx-get="/x/exam" hx-trigger="load" hx-swap="outerHTML">
+  <p>Loading the exam…</p>
+</div>
+{% endblock content %}
