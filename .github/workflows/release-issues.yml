@@ -1,0 +1,227 @@
+name: release-issues
+
+on:
+  workflow_call:
+    inputs:
+      model:
+        type: string
+        required: true
+      priority_field_id:
+        type: string
+        required: true
+      owners:
+        description: Comma-separated logins, no spaces
+        type: string
+        required: true
+    secrets:
+      claude_code_oauth_token:
+        required: true
+
+permissions: {}
+
+jobs:
+  release-issues:
+    name: Release issues
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: contains(format(',{0},', inputs.owners), format(',{0},', github.event.sender.login))
+    permissions:
+      contents: read
+      issues: write # create the issues, label them, set type and Priority, comment
+      pull-requests: read # read the release PR
+    steps:
+      - name: Check out the caller repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check out the shared prompts
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .ai-workflows
+          sparse-checkout: prompts
+          persist-credentials: false
+
+      - name: Read the approval and the review
+        id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.issue.number }}
+          BODY: ${{ github.event.comment.body }}
+        run: |
+          set -euo pipefail
+          first=$(printf '%s' "$BODY" | head -n 1 | tr -d '\r')
+          if [ "$first" != "/approve" ]; then
+            echo "::error::the first line of the comment must be exactly /approve"
+            exit 1
+          fi
+          stop() {
+            gh api -X POST "repos/$GITHUB_REPOSITORY/issues/$PR/comments" -f body="$1" > /dev/null
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          }
+          pr=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR")
+          [ "$(jq -r .state <<< "$pr")" = open ] \
+            || stop "No issues: this pull request is not open."
+          case "$(jq -r .head.ref <<< "$pr")" in
+            release-please--branches--*) ;;
+            *) stop "No issues: this is not a release pull request (its branch is not \`release-please--branches--*\`)." ;;
+          esac
+          [ "$(jq -r '.head.repo.full_name // ""' <<< "$pr")" = "$GITHUB_REPOSITORY" ] \
+            || stop "No issues: the release branch is not in this repository."
+          bot=$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$PR/comments" --jq '.[]' \
+            | jq -s '[.[] | select(.user.login == "github-actions[bot]")]')
+          review=$(jq 'map(select(.body | startswith("<!-- release-review -->"))) | last // empty' <<< "$bot")
+          [ -n "$review" ] \
+            || stop "No issues: there is no review on this pull request. Comment \`/review\` first."
+          after=$(jq --argjson r "$review" \
+            '[.[] | select((.body | startswith("<!-- release-review-issues -->")) and .id > $r.id)] | length' <<< "$bot")
+          [ "$after" -eq 0 ] \
+            || stop "No issues: the issues of the latest review were already created. Comment \`/review\` for a new review."
+          jq -r .body <<< "$review" > "$RUNNER_TEMP/review.md"
+          items=$(grep -c -E '^[0-9]+\. \*\*' "$RUNNER_TEMP/review.md" || true)
+          {
+            echo "ok=true"
+            echo "review_file=$RUNNER_TEMP/review.md"
+            echo "review_url=$(jq -r .html_url <<< "$review")"
+            echo "items=$items"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Turn the review into issues
+        id: claude
+        if: steps.gate.outputs.ok == 'true'
+        uses: anthropics/claude-code-action@1d6de8cb0c237e7c15e9e1bdf973826ebae490cc # v1.0.248
+        with:
+          claude_code_oauth_token: ${{ secrets.claude_code_oauth_token }}
+          github_token: ${{ github.token }}
+          prompt: |
+            Repository: ${{ github.repository }}
+            Pull request: ${{ github.event.issue.number }}
+            Review file: ${{ steps.gate.outputs.review_file }}
+            Read .ai-workflows/prompts/release-issues.md and follow it.
+          claude_args: |
+            --model ${{ inputs.model }}
+            --allowedTools "Read"
+            --json-schema '{"type":"object","properties":{"issues":{"type":"array","maxItems":12,"items":{"type":"object","properties":{"title":{"type":"string"},"body":{"type":"string"},"type":{"type":"string","enum":["Bug","Task","Feature"]},"blocking":{"type":"boolean"}},"required":["title","body","type","blocking"]}}},"required":["issues"]}'
+
+      - name: Create the issues
+        if: steps.gate.outputs.ok == 'true' && steps.claude.outputs.structured_output != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERDICT: ${{ steps.claude.outputs.structured_output }}
+          PR: ${{ github.event.issue.number }}
+          FIELD_ID: ${{ inputs.priority_field_id }}
+          ITEMS: ${{ steps.gate.outputs.items }}
+          REVIEW_URL: ${{ steps.gate.outputs.review_url }}
+        run: |
+          set -euo pipefail
+          f="$RUNNER_TEMP/issues.json"
+          printf '%s\n' "$VERDICT" > "$f"
+          api="repos/$GITHUB_REPOSITORY/issues"
+          fail() {
+            gh api -X POST "$api/$PR/comments" -f body="No issue was created: $1" > /dev/null
+            echo "::error::$1"
+            exit 1
+          }
+          jq -e '(.issues | type == "array" and length <= 12)
+                 and all(.issues[];
+                       (.title | type == "string" and length > 0 and length <= 100)
+                       and (.body | type == "string" and length > 0)
+                       and (.type | IN("Bug", "Task", "Feature"))
+                       and (.blocking | type == "boolean"))' "$f" > /dev/null \
+            || fail "the issue list is not valid."
+          n=$(jq '.issues | length' "$f")
+          [ "$n" -eq "$ITEMS" ] || fail "the review has $ITEMS item(s) and $n issue(s) were returned."
+          [ "$(jq '[.issues[].title] | unique | length' "$f")" -eq "$n" ] \
+            || fail "two issues have the same title."
+          existing=$(gh issue list --repo "$GITHUB_REPOSITORY" --state all --limit 300 --json number,body)
+          ok=1
+          : > "$RUNNER_TEMP/blocking.txt"
+          : > "$RUNNER_TEMP/deferred.txt"
+          for i in $(seq 0 $((n - 1))); do
+            title=$(jq -er ".issues[$i].title" "$f")
+            type=$(jq -er ".issues[$i].type" "$f")
+            blocking=$(jq -r ".issues[$i].blocking" "$f")
+            hash=$(printf '%s' "$title" | sha256sum | cut -c1-16)
+            marker="<!-- release-review-finding:$PR:$hash -->"
+            number=$(jq -r --arg m "$marker" \
+              'map(select((.body // "") | contains($m))) | .[0].number // empty' <<< "$existing")
+            if [ -z "$number" ]; then
+              {
+                jq -er ".issues[$i].body" "$f"
+                printf '\nFound in the release review of #%s: %s\n\n%s\n' "$PR" "$REVIEW_URL" "$marker"
+              } > "$RUNNER_TEMP/issue.md"
+              args=(--repo "$GITHUB_REPOSITORY" --title "$title" --body-file "$RUNNER_TEMP/issue.md")
+              if [ "$blocking" = true ]; then args+=(--label release-blocker); fi
+              url=$(gh issue create "${args[@]}") || { ok=0; continue; }
+              number=${url##*/}
+            elif [ "$blocking" = true ]; then
+              gh issue edit "$number" --repo "$GITHUB_REPOSITORY" --add-label release-blocker || ok=0
+            fi
+            gh api -X PATCH "$api/$number" -f type="$type" --silent || ok=0
+            got_type=$(gh api "$api/$number" --jq '.type.name // ""') || got_type=""
+            [ "$got_type" = "$type" ] || ok=0
+            if [ "$blocking" = true ]; then
+              jq -n --argjson id "$FIELD_ID" '{issue_field_values:[{field_id:$id,value:"Urgent"}]}' \
+                | gh api -X POST "$api/$number/issue-field-values" --input - --silent || ok=0
+              got_prio=$(gh api "$api/$number/issue-field-values" \
+                | jq -r --argjson id "$FIELD_ID" \
+                  '[.[] | select(.issue_field_id == $id)][0].single_select_option.name // ""') || got_prio=""
+              [ "$got_prio" = Urgent ] || ok=0
+              echo "- #$number $title" >> "$RUNNER_TEMP/blocking.txt"
+            else
+              echo "- #$number $title" >> "$RUNNER_TEMP/deferred.txt"
+            fi
+          done
+          {
+            if [ "$ok" = 1 ]; then
+              echo '<!-- release-review-issues -->'
+            else
+              echo '<!-- release-review-issues-failed -->'
+            fi
+            if [ "$n" -eq 0 ]; then
+              echo 'The review has no finding, so no issue was created.'
+            else
+              echo 'Issues made from the approved review:'
+              if [ -s "$RUNNER_TEMP/blocking.txt" ]; then
+                echo
+                echo '**Blocking** (`release-blocker`, Urgent). Add `RELEASE` to each to start its development plan; they skip triage.'
+                cat "$RUNNER_TEMP/blocking.txt"
+              fi
+              if [ -s "$RUNNER_TEMP/deferred.txt" ]; then
+                echo
+                echo '**Deferred.** Add `triage` to each.'
+                cat "$RUNNER_TEMP/deferred.txt"
+              fi
+            fi
+            echo
+            if [ "$ok" = 1 ]; then
+              echo 'Set `READY TO LIVE` on this pull request once the blocking issues are closed and the review is accepted.'
+            else
+              echo 'Some steps failed; see the run log. Comment `/approve` again: issues already created are found by their marker and are not duplicated.'
+            fi
+          } > "$RUNNER_TEMP/issues.md"
+          gh api -X POST "$api/$PR/comments" -F body=@"$RUNNER_TEMP/issues.md" > /dev/null
+          test "$ok" = 1
+
+      - name: Record the issues run
+        if: always() && steps.claude.outcome != 'skipped'
+        id: record
+        uses: $/.github/actions/record-run
+        with:
+          execution_file: ${{ steps.claude.outputs.execution_file }}
+          stage: release-issues
+          model: ${{ inputs.model }}
+          auth: oauth
+          issue: ${{ github.event.issue.number }}
+
+      - name: Upload the record
+        if: always() && steps.claude.outcome != 'skipped'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: run-record-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ steps.record.outputs.record_path }}
+          if-no-files-found: warn
+          retention-days: 90
