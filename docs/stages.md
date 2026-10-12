@@ -53,3 +53,11 @@ metadata read.
 The token is minted once per run, after the check rounds, only when the outcome is a pull request or
 a draft. It is scoped to the current repository, asks for exactly the three permissions above, and
 is used by the push step and the pull request step. The steps that run the model never receive it.
+
+## The deletion check
+
+The `scope` step of the `dev-round` action lists the files the executor deleted between the base and
+HEAD, with a rename counted as a deletion of its old path. A deletion is allowed only when its path is
+named in the plan's **Files** list, or lies under a listed path that ends in `/`; the comparison is
+literal. A deletion outside the list, or a diff or plan that cannot be read, sets the verdict to fail,
+whatever the check model says. The findings name each path.

@@ -149,6 +149,58 @@ runs:
         fi
         echo "red_state=$state" >> "$GITHUB_OUTPUT"
 
+    # every deleted path must be named in the plan's Files list; a deletion outside it, or a diff or plan
+    # that cannot be read (error), makes the verdict step fail the round
+    - id: scope
+      if: steps.commands.outcome == 'success'
+      shell: bash
+      env:
+        PLAN_FILE: ${{ inputs.plan_file }}
+        BASE: ${{ inputs.base }}
+        RESULTS: ${{ steps.commands.outputs.results_file }}
+      run: |
+        set -uo pipefail
+        state=none viol=() allowed=()
+        listing="$RUNNER_TEMP/scope-plan.txt" deleted="$RUNNER_TEMP/scope-deleted.bin"
+        # the backticked bullets between **Files** and the next bold line; the heading must be there
+        if [ ! -r "$PLAN_FILE" ] \
+           || ! awk 'BEGIN { seen = 0 }
+                     /^\*\*Files\*\*/ { inside = 1; seen = 1; next }
+                     inside && /^\*\*/ { inside = 0 }
+                     inside && /^- `[^`]+`/ { s = substr($0, 4); print substr(s, 1, index(s, "`") - 1) }
+                     END { exit !seen }' "$PLAN_FILE" > "$listing"; then
+          state=error
+        elif ! git diff --name-only --no-renames --diff-filter=D -z "$BASE...HEAD" > "$deleted" 2> /dev/null; then
+          state=error
+        else
+          while IFS= read -r p; do allowed+=("$p"); done < "$listing"
+          [ -s "$deleted" ] && state=ok
+          while IFS= read -r -d '' d; do
+            found=no
+            for a in "${allowed[@]}"; do
+              # literal comparison only: an entry ending in / names a directory, any other entry one file
+              if [ "$d" = "$a" ] || { [[ $a == */ ]] && [[ $d == "$a"* ]]; }; then found=yes; break; fi
+            done
+            if [ "$found" = no ]; then viol+=("$d"); state=out_of_scope; fi
+          done < "$deleted"
+        fi
+        {
+          printf '### scope check\nstate: %s\n' "$state"
+          case "$state" in
+            error) echo 'the deletions or the plan Files list could not be read' ;;
+            out_of_scope)
+              echo "deleted but not named in the plan Files list:"
+              printf -- '- %s\n' "${viol[@]}" ;;
+          esac
+          echo
+        } >> "$RESULTS"
+        json='[]'
+        if [ "${#viol[@]}" -gt 0 ]; then
+          json=$(for d in "${viol[@]}"; do jq -nc --arg d "$d" '$d'; done | jq -sc .)
+        fi
+        echo "scope_state=$state" >> "$GITHUB_OUTPUT"
+        echo "scope_violations=$json" >> "$GITHUB_OUTPUT"
+
     - id: check
       if: steps.commands.outcome == 'success'
       uses: anthropics/claude-code-action@1d6de8cb0c237e7c15e9e1bdf973826ebae490cc # v1.0.248
@@ -186,6 +238,8 @@ runs:
         CHECK_EXIT: ${{ steps.commands.outputs.check_exit }}
         TEST_EXIT: ${{ steps.commands.outputs.test_exit }}
         RED_STATE: ${{ steps.red.outputs.red_state }}
+        SCOPE_STATE: ${{ steps.scope.outputs.scope_state }}
+        SCOPE_VIOLATIONS: ${{ steps.scope.outputs.scope_violations }}
         ROUND: ${{ inputs.round }}
       run: |
         set -uo pipefail
@@ -203,6 +257,7 @@ runs:
           # mechanism, not prose: a non-zero command forces fail
           if [ "${CHECK_EXIT:-0}" != 0 ] || [ "${TEST_EXIT:-0}" != 0 ] \
              || [ "${RED_STATE:-none}" = green_on_base ] \
+             || [ "${SCOPE_STATE:-none}" = out_of_scope ] || [ "${SCOPE_STATE:-none}" = error ] \
              || [ "$(jq '[.criteria[] | select(.met | not)] | length' <<< "$CHECK")" -gt 0 ]; then
             verdict=fail
           fi
@@ -213,6 +268,8 @@ runs:
             [ "${CHECK_EXIT:-0}" != 0 ] && echo "- the check command exited ${CHECK_EXIT}"
             [ "${TEST_EXIT:-0}" != 0 ] && echo "- the test command exited ${TEST_EXIT}"
             [ "${RED_STATE:-none}" = green_on_base ] && echo "- the new tests pass on the base tree; they do not pin the change"
+            [ "${SCOPE_STATE:-none}" = out_of_scope ] && jq -r '.[] | "- deletion of \(.) is not in the plan Files list"' <<< "$SCOPE_VIOLATIONS"
+            [ "${SCOPE_STATE:-none}" = error ] && echo "- the deletions or the plan Files list could not be read"
           } > "$findings"
         else
           echo "The round produced no valid result." > "$findings"

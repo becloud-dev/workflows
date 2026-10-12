@@ -32,7 +32,8 @@ Rules:
 
 - Only the commands listed in the prompt (check and test) and `git add`, `git commit`,
   `git rm`, `git status`, `git diff`, `git log` are available. `git rm` is only for files the
-  plan names or a directory it names; nothing else is removed. Do not push, branch, rebase,
+  plan names or a directory it names; nothing else is removed. A deletion outside the plan's Files
+  list fails the round in the harness, whatever this prompt says. Do not push, branch, rebase,
   reset or change remotes; the workflow does that.
 - No refactors, renames, dependency changes or extra features beyond the plan.
 - Never weaken or delete a test to make it pass.
