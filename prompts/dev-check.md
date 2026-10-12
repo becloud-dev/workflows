@@ -41,3 +41,6 @@ Return:
 
 Judge only against the plan and the results. Do not add requirements the plan does not state,
 and do not report style preferences.
+
+Read files with the `Read` tool. Run `git diff` and `git log` on their own, with no `cd`, `;` or
+pipe.

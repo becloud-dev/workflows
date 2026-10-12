@@ -33,6 +33,8 @@ Rules:
   change remotes; the workflow does that.
 - No refactors, renames, dependency changes or extra features beyond the plan.
 - Never weaken or delete a test to make it pass.
+- Read files with the `Read` tool, never with `cat`. Run each command on its own, exactly as
+  given, with no `;`, `&&`, pipe or `cd`; the exit status is in the tool result.
 - If a step cannot be done as written (a file or tool the plan assumes does not exist, a
   criterion that cannot be tested here), stop and report it as `blocked`; do not guess.
 
