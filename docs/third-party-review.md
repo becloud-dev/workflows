@@ -1868,3 +1868,63 @@ Gaps (recorded, not closed):
 | Hold when `RELEASE` is added before `UX/UI` is removed | the owner must re-add `RELEASE`; order is by design, not exercised in a mixed event order | stays as documented behaviour |
 | `ux-ui.yml:160` zizmor `template-injection` (info, low confidence) | pre-existing; `record_path` is a runner temp path | passing it through `env:`, its own change |
 | Gate `UX/UI` to `RELEASE` with a real UI change end to end | exercised on #13 only as a plan | slice 4b on a UI issue, later |
+
+### Stage 4b: development execution (2026-10-12)
+
+Decisions (user, 2026-10-12): branch type from the issue type (`Bug` gives `fix`, `Feature`
+`feat`, else `chore`); push by an explicit token URL step; a first line other than `/approve`
+fails the run; an existing branch stops the run with a comment; a PR opens only with commits ahead
+of the base and a last outcome `done` (`fail` gives a draft); `blocked` or `failed` posts a
+comment only; PR body is `Closes #N`, the plan link and the verdict. Strictening: a plan is made
+and executed only for issues written by an `OWNERS` login or `github-actions[bot]`; the plan reads
+a file with the comments of those authors only and has no `gh` tool; `triage` and `ux-ui` stay as
+they are because they must read external issues. The user turned on "Allow GitHub Actions to
+create and approve pull requests" at the organisation and the repository; it is to be turned off
+after the live runs.
+
+Source read (raw, `github/docs`): `data/reusables/actions/actions-do-not-trigger-workflows.md`,
+`data/features/actions-github-token-pull-request-approval.yml`,
+`events-that-trigger-workflows.md` (`issue_comment`),
+`managing-github-actions-settings-for-a-repository.md`, `github-terms-of-service.md` (accounts);
+`claude-code-action` at `1d6de8c` (`src/entrypoints/prepare.ts`, `permissions.ts`, `actor.ts`);
+`gh pr create --help` 2.102.0.
+
+Corrections: (1) pushes with `GITHUB_TOKEN` start no run, but a `pull_request` `opened`,
+`synchronize` or `reopened` from a PR a `GITHUB_TOKEN` workflow creates makes runs in an
+approval-required state; this narrows the "known limit" in the stage 4 plan. Unverified live: the
+sandbox has no PR workflow. (2) Agent mode also runs `checkWritePermissions` for issue events
+(`prepare.ts`), not only `checkHumanActor`; seen in the log as "Permission level retrieved: admin".
+
+Changes: `workflows` `0bc04ef` (execute prompt), `3bbd734` (check prompt), `9115dfc` and `25d08c3`
+(`dev-round` composite; unmet criteria named), `6d64c57` (`record-run` names the file by stage),
+`14633a0` (`dev-execute.yml`), `2d8d29c` (author gate, filtered comments), `dba3e62` (prompt
+wording: `Read` tool, one command at a time); `triage-sandbox` `c0ba872` (greet fixture, vars
+`CHECK_COMMAND`, `TEST_COMMAND`), `85c8e70` (caller). Fixture checks on jq 1.7.1 (SHA-256
+verified): composite 32 cases, `record-run` 10, `dev-execute` 37, `dev-plan` gate 14; mutations
+fail as expected; zizmor 1.30.1 offline: no new findings.
+
+Live runs (`gh` read-back):
+
+| Case | Run | Result |
+|---|---|---|
+| a. #22, plan approved | `38243213387` | PR #23, 1 commit, pass in round 1; haiku 12 turns 0.008 USD, sonnet 7 turns 0.103 USD; denials 2 and 1 |
+| b. #24, plan edited by the owner to a contradictory criterion | `38245576046` | executor `blocked` with the reason; findings comment; no push, no PR |
+| c. #24, criterion removed, after `dba3e62` | `38246001793` | PR #25, pass in round 1; haiku 15 turns 0.0054 USD, sonnet 7 turns 0.042 USD; denials 0 and 0 |
+
+Inference: the mechanics hold (gate, branch, composite outputs through `continue-on-error`,
+`$/` inside a composite, push and `gh pr create` with `GITHUB_TOKEN`, blocked path, owner edit
+honoured). The `Read` of files in the runner temp directory worked (inferred from the checker's
+verdict). The wording fix removed the shell-form denials in one sample per case.
+
+Gaps (recorded, not closed):
+
+| Gap | Why it matters | What would close it |
+|---|---|---|
+| `red_seen` is self-reported | no run evidence that the new tests failed first | the workflow running the tests against the base, its own change |
+| `fail` with a draft PR and round 2 `findings_file` not seen live | an honest executor blocks instead of failing | the first real failing round |
+| Non-owner trigger not run live | the guard is read from the expression and the action source | a second human account comments `/approve` |
+| Approval-required PR runs | the sandbox has no PR workflow | a PR workflow in a consumer |
+| Bot-authored issues are trusted | an external issue split by an owner-triggered triage reaches the plan | the owner's `triage` label is the control; recorded |
+| One sample per model | cost and quality variance unknown | more runs |
+| Non-owner writer edits the plan comment | the execution reads it as it is | a check of the comment's last editor |
+| Organisation setting on | any workflow in the organisation can open PRs | turn it off after 4b, or the GitHub App round |
