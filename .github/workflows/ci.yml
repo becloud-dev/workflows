@@ -31,8 +31,9 @@ jobs:
       - name: Run the suites
         run: bash tests/run-all.sh
 
-  # Audits the workflows and actions of the head and of the base, and fails on the findings the pull
-  # request adds; the findings main already has do not block. The check name stays the same when skipped.
+  # Audits the workflows, actions and consumer templates of the head and of the base, and fails on the
+  # findings the pull request adds; the findings main already has do not block. The check name stays the
+  # same when skipped.
   zizmor:
     name: zizmor audit
     runs-on: ubuntu-latest
@@ -61,14 +62,14 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          changed=$(git -C head diff --name-only "$BASE_SHA...$HEAD_SHA" -- .github/workflows .github/actions)
+          changed=$(git -C head diff --name-only "$BASE_SHA...$HEAD_SHA" -- .github/workflows .github/actions templates/consumer/.github)
           if [ -n "$changed" ]; then echo "audit=true" >> "$GITHUB_OUTPUT"; else echo "audit=false" >> "$GITHUB_OUTPUT"; fi
 
       - name: Audit the base and head trees with zizmor
         if: steps.scope.outputs.audit == 'true'
         run: |
           for tree in base head; do
-            docker run --rm -v "$PWD/$tree/.github:/audit:ro" ghcr.io/zizmorcore/zizmor:1.30.1@sha256:a2eb396d886c053073405c7a980f2139ba2248ec172243cfa3841e57196e8101 --offline --persona=auditor --format=json --no-exit-codes /audit > "$RUNNER_TEMP/zizmor-$tree.json"
+            docker run --rm -v "$PWD/$tree:/audit:ro" ghcr.io/zizmorcore/zizmor:1.30.1@sha256:a2eb396d886c053073405c7a980f2139ba2248ec172243cfa3841e57196e8101 --offline --persona=auditor --format=json --no-exit-codes /audit/.github /audit/templates/consumer/.github > "$RUNNER_TEMP/zizmor-$tree.json"
             [ -s "$RUNNER_TEMP/zizmor-$tree.json" ] && jq -e 'type == "array"' "$RUNNER_TEMP/zizmor-$tree.json" > /dev/null || { echo "zizmor wrote no usable report for $tree" >&2; exit 1; }
           done
 
