@@ -1,0 +1,50 @@
+# Consumer template
+
+Files and a bootstrap script for a new repository that uses the shared workflows of
+`becloud-dev/workflows`. The callers are the ones `triage-sandbox` runs; each calls a reusable
+workflow `@main`.
+
+## Contents
+
+| Path | Purpose |
+|---|---|
+| `.github/workflows/` | the 11 callers: `pr-checks`, `release-please`, `release-gate`, `release-review`, `release-issues`, `triage`, `dev-plan`, `dev-execute`, `ux-ui`, `planner-backlog`, `planner-roadmap` |
+| `release-please-config.json`, `.release-please-manifest.json` | release notes sections (`refactor` visible) and the seed version `0.1.0` |
+| `.github/ISSUE_TEMPLATE/` | `bug.md`, `project.yml` |
+| `AGENTS.md`, `docs/design-system.md` | stubs to fill; `ux-ui` reads the design system |
+| `bootstrap.sh` | labels, repository variables and the seed tag |
+
+## Order of use
+
+1. Create the repository on GitHub (owner).
+2. Copy the contents above, except `README.md` and `bootstrap.sh`, into a clone. Fill
+   `AGENTS.md`. When the seed version is not `0.1.0`, set it in `.release-please-manifest.json`
+   and pass the same value as `--seed`. Commit and push to the default branch.
+3. Grant the repository the organisation secrets `CLAUDE_CODE_OAUTH_TOKEN` and
+   `APP_PRIVATE_KEY` and the organisation variable `APP_CLIENT_ID` (visibility `selected`;
+   a settings step).
+4. Run `bootstrap.sh` as the owner with `gh` logged in; `--dry-run` first:
+
+       templates/consumer/bootstrap.sh --repo OWNER/NAME --owners LOGIN \
+         --check 'CHECK COMMAND' --test 'TEST COMMAND' --test-paths 'tests/*' --dry-run
+
+   It reads the default branch, the organisation issue field `Priority` and the seed tag,
+   writes nothing when a read fails, then creates the six labels, sets `OWNERS`,
+   `CHECK_COMMAND`, `TEST_COMMAND`, `TEST_PATHS` and `PRIORITY_FIELD_ID`, and tags the tip of
+   the default branch `v<seed>`. An existing tag is left as it is.
+5. Read back: labels, variables and tag with `gh`; then push a `feat:` commit and read the
+   release pull request and the `release-gate` status.
+
+## Settings left as they are
+
+Default workflow permissions `read`; "Allow GitHub Actions to create and approve pull requests"
+off. With it off, the pull request step of the development execution fails (accepted gap).
+
+## Limits
+
+- Callers use `@main`, not a pinned SHA; pinning is part of the Security design.
+- `CHECK_COMMAND` and `TEST_COMMAND` cannot contain a quote, backslash, dollar, backtick or
+  newline (`dev-round` refuses them).
+- `SETUP_COMMAND` is optional and not set by the script.
+- `bootstrap.sh` creates no organisation secret, variable or Project; the grant in step 3 is
+  yours.
