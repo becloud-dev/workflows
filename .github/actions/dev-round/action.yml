@@ -1,0 +1,167 @@
+name: dev-round
+description: One development round, execute with haiku, run check and test, check with sonnet
+inputs:
+  claude_code_oauth_token: {required: true}
+  github_token: {required: true}
+  repository: {required: true}
+  issue: {required: true}
+  round: {required: true}
+  base: {required: true, description: "Commit the branch was cut from"}
+  plan_file: {required: true}
+  findings_file: {required: false, default: none}
+  execute_model: {required: true}
+  check_model: {required: true}
+  check_command: {required: false, default: ""}
+  test_command: {required: false, default: ""}
+outputs:
+  outcome:
+    description: done, blocked or failed
+    value: ${{ steps.verdict.outputs.outcome }}
+  verdict:
+    description: pass, fail or none
+    value: ${{ steps.verdict.outputs.verdict }}
+  findings_file:
+    value: ${{ steps.verdict.outputs.findings_file }}
+  execute_record_path:
+    value: ${{ steps.record_execute.outputs.record_path }}
+  check_record_path:
+    value: ${{ steps.record_check.outputs.record_path }}
+runs:
+  using: composite
+  steps:
+    - id: tools
+      shell: bash
+      env:
+        CHECK: ${{ inputs.check_command }}
+        TEST: ${{ inputs.test_command }}
+      run: |
+        set -euo pipefail
+        allowed='Read,Edit,Write,Grep,Glob,Bash(git add:*),Bash(git commit:*),Bash(git status:*),Bash(git diff:*),Bash(git log:*)'
+        for c in "$CHECK" "$TEST"; do
+          [ -z "$c" ] && continue
+          case "$c" in
+            *'"'*|*'$'*|*'`'*|*'\'*|*$'\n'*) echo "::error::a command contains a quote, backslash, dollar, backtick or newline"; exit 1 ;;
+          esac
+          allowed="$allowed,Bash($c:*)"
+        done
+        echo "allowed=$allowed" >> "$GITHUB_OUTPUT"
+
+    - id: execute
+      uses: anthropics/claude-code-action@1d6de8cb0c237e7c15e9e1bdf973826ebae490cc # v1.0.248
+      with:
+        claude_code_oauth_token: ${{ inputs.claude_code_oauth_token }}
+        github_token: ${{ inputs.github_token }}
+        prompt: |
+          Repository: ${{ inputs.repository }}
+          Issue number: ${{ inputs.issue }}
+          Plan file: ${{ inputs.plan_file }}
+          Findings file: ${{ inputs.findings_file }}
+          Check command: ${{ inputs.check_command }}
+          Test command: ${{ inputs.test_command }}
+          Read .ai-workflows/prompts/dev-execute.md and follow it.
+        claude_args: |
+          --model ${{ inputs.execute_model }}
+          --allowedTools "${{ steps.tools.outputs.allowed }}"
+          --json-schema '{"type":"object","properties":{"outcome":{"type":"string","enum":["done","blocked"]},"summary":{"type":"string"},"red_seen":{"type":"boolean"},"commits":{"type":"array","items":{"type":"string"}},"blocked_reason":{"type":"string"}},"required":["outcome","summary"]}'
+
+    - id: record_execute
+      if: always() && steps.execute.outcome != 'skipped'
+      uses: $/.github/actions/record-run
+      with:
+        execution_file: ${{ steps.execute.outputs.execution_file }}
+        stage: dev-execute-r${{ inputs.round }}
+        model: ${{ inputs.execute_model }}
+        auth: oauth
+        issue: ${{ inputs.issue }}
+
+    - id: commands
+      if: steps.execute.outcome == 'success' && fromJSON(steps.execute.outputs.structured_output || '{}').outcome == 'done'
+      shell: bash
+      env:
+        CHECK: ${{ inputs.check_command }}
+        TEST: ${{ inputs.test_command }}
+        ROUND: ${{ inputs.round }}
+      run: |
+        set -uo pipefail
+        out="$RUNNER_TEMP/round-$ROUND-results.md"
+        run_one() { # name command
+          local name=$1 cmd=$2 code=0 log
+          log="$RUNNER_TEMP/$name.log"
+          if [ -z "$cmd" ]; then
+            printf '### %s\nnot configured\n\n' "$name" >> "$out"; return
+          fi
+          bash -c "$cmd" > "$log" 2>&1 || code=$?
+          printf '### %s\ncommand: `%s`\nexit code: %s\n```\n%s\n```\n\n' \
+            "$name" "$cmd" "$code" "$(tail -n 60 "$log" | tail -c 4000)" >> "$out"
+          echo "${name}_exit=$code" >> "$GITHUB_OUTPUT"
+        }
+        : > "$out"
+        run_one check "$CHECK"
+        run_one test "$TEST"
+        echo "results_file=$out" >> "$GITHUB_OUTPUT"
+
+    - id: check
+      if: steps.commands.outcome == 'success'
+      uses: anthropics/claude-code-action@1d6de8cb0c237e7c15e9e1bdf973826ebae490cc # v1.0.248
+      with:
+        claude_code_oauth_token: ${{ inputs.claude_code_oauth_token }}
+        github_token: ${{ inputs.github_token }}
+        prompt: |
+          Repository: ${{ inputs.repository }}
+          Issue number: ${{ inputs.issue }}
+          Plan file: ${{ inputs.plan_file }}
+          Results file: ${{ steps.commands.outputs.results_file }}
+          Base: ${{ inputs.base }}
+          Read .ai-workflows/prompts/dev-check.md and follow it.
+        claude_args: |
+          --model ${{ inputs.check_model }}
+          --allowedTools "Read,Grep,Glob,Bash(git diff:*),Bash(git log:*)"
+          --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["pass","fail"]},"summary":{"type":"string"},"criteria":{"type":"array","items":{"type":"object","properties":{"criterion":{"type":"integer"},"met":{"type":"boolean"}},"required":["criterion","met"]}},"findings":{"type":"array","maxItems":8,"items":{"type":"object","properties":{"criterion":{"type":"integer"},"problem":{"type":"string"}},"required":["criterion","problem"]}}},"required":["verdict","summary","criteria","findings"]}'
+
+    - id: record_check
+      if: always() && steps.check.outcome != 'skipped'
+      uses: $/.github/actions/record-run
+      with:
+        execution_file: ${{ steps.check.outputs.execution_file }}
+        stage: dev-check-r${{ inputs.round }}
+        model: ${{ inputs.check_model }}
+        auth: oauth
+        issue: ${{ inputs.issue }}
+
+    - id: verdict
+      if: always()
+      shell: bash
+      env:
+        EXECUTE: ${{ steps.execute.outputs.structured_output }}
+        CHECK: ${{ steps.check.outputs.structured_output }}
+        CHECK_EXIT: ${{ steps.commands.outputs.check_exit }}
+        TEST_EXIT: ${{ steps.commands.outputs.test_exit }}
+        ROUND: ${{ inputs.round }}
+      run: |
+        set -uo pipefail
+        findings="$RUNNER_TEMP/round-$ROUND-findings.md"
+        outcome=failed verdict=none
+        exec_outcome=$(jq -r '.outcome // ""' <<< "${EXECUTE:-null}" 2>/dev/null || true)
+        if [ "$exec_outcome" = blocked ]; then
+          outcome=blocked
+          { echo "The executor reported it is blocked:"; jq -r '.blocked_reason // "no reason given"' <<< "$EXECUTE"; } > "$findings"
+        elif [ "$exec_outcome" = done ] && [ -n "${CHECK:-}" ] \
+             && jq -e '(.verdict | IN("pass","fail")) and (.criteria | type == "array")
+                       and ((.verdict == "fail") == ((.findings | length) > 0))' <<< "$CHECK" > /dev/null; then
+          outcome=done
+          verdict=$(jq -r .verdict <<< "$CHECK")
+          # mechanism, not prose: a non-zero command forces fail
+          if [ "${CHECK_EXIT:-0}" != 0 ] || [ "${TEST_EXIT:-0}" != 0 ] \
+             || [ "$(jq '[.criteria[] | select(.met | not)] | length' <<< "$CHECK")" -gt 0 ]; then
+            verdict=fail
+          fi
+          {
+            echo "Round $ROUND check findings:"
+            jq -r '.findings[] | "- criterion \(.criterion): \(.problem)"' <<< "$CHECK"
+            [ "${CHECK_EXIT:-0}" != 0 ] && echo "- the check command exited ${CHECK_EXIT}"
+            [ "${TEST_EXIT:-0}" != 0 ] && echo "- the test command exited ${TEST_EXIT}"
+          } > "$findings"
+        else
+          echo "The round produced no valid result." > "$findings"
+        fi
+        { echo "outcome=$outcome"; echo "verdict=$verdict"; echo "findings_file=$findings"; } >> "$GITHUB_OUTPUT"
