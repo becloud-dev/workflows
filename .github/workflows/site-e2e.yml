@@ -1,0 +1,72 @@
+# Runs the Playwright end-to-end tests of a Zola and Worker site of the calling repository. The browsers and
+# e2e_command inputs reach the shell only through the BROWSERS and E2E environment variables, never through an
+# expression in a run: block, and browsers is rejected unless it is a list of lower-case browser names.
+name: site-e2e
+
+on:
+  workflow_call:
+    inputs:
+      node_version:
+        description: Node.js version to install
+        type: string
+        default: '24'
+      browsers:
+        description: Space-separated Playwright browsers to install
+        type: string
+        default: chromium webkit
+      e2e_command:
+        description: Command that runs the end-to-end tests, run with bash -c
+        type: string
+        default: npm run e2e
+
+permissions: {}
+
+jobs:
+  e2e:
+    name: End-to-end tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read # check out the caller repository
+    steps:
+      - name: Check out the caller repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ inputs.node_version }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Zola
+        uses: $/.github/actions/install-zola
+
+      - name: Validate the browsers input
+        env:
+          BROWSERS: ${{ inputs.browsers }}
+        run: |
+          printf '%s' "$BROWSERS" | grep -Ezq '^[a-z]+( [a-z]+)*$' || { echo "::error::browsers must be space-separated lower-case names"; exit 1; }
+
+      - name: Install Playwright browsers
+        env:
+          BROWSERS: ${{ inputs.browsers }}
+        run: npx playwright install --with-deps $BROWSERS
+
+      - name: Run the end-to-end tests
+        env:
+          E2E: ${{ inputs.e2e_command }}
+        run: bash -c "$E2E"
+
+      - name: Upload the Playwright report
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 14
+          if-no-files-found: ignore
