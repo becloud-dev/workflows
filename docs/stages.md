@@ -18,6 +18,7 @@ file in the same pull request; `tests/dev-execute/run.sh` checks that every work
 | `planner-roadmap.yml` | Create milestones and assign issues, only when `apply` is true | GITHUB_TOKEN | contents read, issues write |
 | `ux-ui.yml` | Post the UX and UI research | GITHUB_TOKEN | contents read, issues write |
 | `ci.yml` | Run the test suites on a pull request | GITHUB_TOKEN | contents read |
+| `site-ci.yml` | Check a Zola and Worker site, called by a consumer repository | GITHUB_TOKEN | contents read |
 
 ## The rule
 
