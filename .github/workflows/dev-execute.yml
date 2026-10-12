@@ -1,0 +1,280 @@
+name: dev-execute
+
+on:
+  workflow_call:
+    inputs:
+      execute_model:
+        type: string
+        required: true
+      check_model:
+        type: string
+        required: true
+      owners:
+        description: Comma-separated logins, no spaces
+        type: string
+        required: true
+      setup_command:
+        description: Run once before the rounds; empty for none
+        type: string
+        required: false
+        default: ""
+      check_command:
+        description: Run after each execution, also allowed to the executor; empty for none
+        type: string
+        required: false
+        default: ""
+      test_command:
+        description: Run after each execution, also allowed to the executor; empty for none
+        type: string
+        required: false
+        default: ""
+    secrets:
+      claude_code_oauth_token:
+        required: true
+
+permissions: {}
+
+jobs:
+  dev-execute:
+    name: Development execution
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    if: contains(format(',{0},', inputs.owners), format(',{0},', github.event.sender.login))
+    permissions:
+      contents: write # push the branch
+      pull-requests: write # open the pull request
+      issues: write # comment
+    steps:
+      - name: Check out the caller repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check out the shared prompts
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .ai-workflows
+          sparse-checkout: prompts
+          persist-credentials: false
+
+      - name: Read the approval and the plan
+        id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ github.event.issue.number }}
+          BODY: ${{ github.event.comment.body }}
+        run: |
+          set -euo pipefail
+          first=$(printf '%s' "$BODY" | head -n 1 | tr -d '\r')
+          if [ "$first" != "/approve" ]; then
+            echo "::error::the first line of the comment must be exactly /approve"
+            exit 1
+          fi
+          stop() {
+            gh issue comment "$ISSUE" --body "$1"
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          }
+          issue=$(gh api "repos/$GITHUB_REPOSITORY/issues/$ISSUE")
+          [ "$(jq -r '[.labels[].name] | index("RELEASE") != null' <<< "$issue")" = true ] \
+            || stop "No execution: this issue does not carry \`RELEASE\`."
+          type=$(jq -r '.type.name // ""' <<< "$issue")
+          [ "$type" != Project ] \
+            || stop "An execution applies to the sub-issues of a Project, not to the Project itself."
+          plan=$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$ISSUE/comments" --jq '.[]' \
+            | jq -s 'map(select(.user.login == "github-actions[bot]" and (.body | startswith("<!-- dev-plan -->")))) | last // empty')
+          [ -n "$plan" ] || stop "No execution: there is no development plan comment on this issue. Add \`RELEASE\` to get one."
+          jq -r .body <<< "$plan" > "$RUNNER_TEMP/plan.md"
+          case "$type" in
+            Bug) ctype=fix ;;
+            Feature) ctype=feat ;;
+            *) ctype=chore ;;
+          esac
+          slug=$(jq -r .title <<< "$issue" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//' | cut -c1-40 | sed -E 's/-+$//')
+          branch="$ctype/$ISSUE-${slug:-change}"
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$branch" > /dev/null 2>&1; then
+            stop "No execution: the branch \`$branch\` already exists. Delete it or continue there by hand."
+          fi
+          {
+            echo "ok=true"
+            echo "ctype=$ctype"
+            echo "branch=$branch"
+            echo "plan_file=$RUNNER_TEMP/plan.md"
+            echo "plan_url=$(jq -r .html_url <<< "$plan")"
+            echo "base=$(git rev-parse HEAD)"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create the branch
+        if: steps.gate.outputs.ok == 'true'
+        env:
+          BRANCH: ${{ steps.gate.outputs.branch }}
+        run: git switch -c "$BRANCH"
+
+      - name: Set up
+        if: steps.gate.outputs.ok == 'true' && inputs.setup_command != ''
+        env:
+          SETUP: ${{ inputs.setup_command }}
+        run: bash -c "$SETUP"
+
+      - name: Round 1
+        id: r1
+        if: steps.gate.outputs.ok == 'true'
+        continue-on-error: true
+        uses: $/.github/actions/dev-round
+        with:
+          claude_code_oauth_token: ${{ secrets.claude_code_oauth_token }}
+          github_token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          issue: ${{ github.event.issue.number }}
+          round: "1"
+          base: ${{ steps.gate.outputs.base }}
+          plan_file: ${{ steps.gate.outputs.plan_file }}
+          execute_model: ${{ inputs.execute_model }}
+          check_model: ${{ inputs.check_model }}
+          check_command: ${{ inputs.check_command }}
+          test_command: ${{ inputs.test_command }}
+
+      - name: Round 2
+        id: r2
+        if: steps.r1.outputs.outcome == 'done' && steps.r1.outputs.verdict == 'fail'
+        continue-on-error: true
+        uses: $/.github/actions/dev-round
+        with:
+          claude_code_oauth_token: ${{ secrets.claude_code_oauth_token }}
+          github_token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          issue: ${{ github.event.issue.number }}
+          round: "2"
+          base: ${{ steps.gate.outputs.base }}
+          plan_file: ${{ steps.gate.outputs.plan_file }}
+          findings_file: ${{ steps.r1.outputs.findings_file }}
+          execute_model: ${{ inputs.execute_model }}
+          check_model: ${{ inputs.check_model }}
+          check_command: ${{ inputs.check_command }}
+          test_command: ${{ inputs.test_command }}
+
+      - name: Round 3
+        id: r3
+        if: steps.r2.outputs.outcome == 'done' && steps.r2.outputs.verdict == 'fail'
+        continue-on-error: true
+        uses: $/.github/actions/dev-round
+        with:
+          claude_code_oauth_token: ${{ secrets.claude_code_oauth_token }}
+          github_token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          issue: ${{ github.event.issue.number }}
+          round: "3"
+          base: ${{ steps.gate.outputs.base }}
+          plan_file: ${{ steps.gate.outputs.plan_file }}
+          findings_file: ${{ steps.r2.outputs.findings_file }}
+          execute_model: ${{ inputs.execute_model }}
+          check_model: ${{ inputs.check_model }}
+          check_command: ${{ inputs.check_command }}
+          test_command: ${{ inputs.test_command }}
+
+      - name: Decide what to publish
+        id: final
+        if: always() && steps.gate.outputs.ok == 'true'
+        env:
+          BASE: ${{ steps.gate.outputs.base }}
+          R1_OUTCOME: ${{ steps.r1.outputs.outcome }}
+          R1_VERDICT: ${{ steps.r1.outputs.verdict }}
+          R1_FINDINGS: ${{ steps.r1.outputs.findings_file }}
+          R2_OUTCOME: ${{ steps.r2.outputs.outcome }}
+          R2_VERDICT: ${{ steps.r2.outputs.verdict }}
+          R2_FINDINGS: ${{ steps.r2.outputs.findings_file }}
+          R3_OUTCOME: ${{ steps.r3.outputs.outcome }}
+          R3_VERDICT: ${{ steps.r3.outputs.verdict }}
+          R3_FINDINGS: ${{ steps.r3.outputs.findings_file }}
+        run: |
+          set -euo pipefail
+          outcome=none verdict=none findings="" rounds=0
+          for n in 1 2 3; do
+            o="R${n}_OUTCOME" v="R${n}_VERDICT" f="R${n}_FINDINGS"
+            [ -n "${!o}" ] || continue
+            outcome=${!o} verdict=${!v} findings=${!f} rounds=$n
+          done
+          ahead=$(git rev-list --count "$BASE..HEAD")
+          if [ "$outcome" = done ] && [ "$ahead" -gt 0 ]; then
+            if [ "$verdict" = pass ]; then action=pr; else action=draft; fi
+          else
+            action=comment
+          fi
+          {
+            echo "action=$action"
+            echo "outcome=$outcome"
+            echo "verdict=$verdict"
+            echo "findings_file=$findings"
+            echo "rounds=$rounds"
+            echo "ahead=$ahead"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Push the branch
+        if: steps.final.outputs.action == 'pr' || steps.final.outputs.action == 'draft'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ steps.gate.outputs.branch }}
+        run: |
+          set -euo pipefail
+          git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:refs/heads/${BRANCH}"
+
+      - name: Open the pull request
+        if: steps.final.outputs.action == 'pr' || steps.final.outputs.action == 'draft'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ steps.gate.outputs.branch }}
+          CTYPE: ${{ steps.gate.outputs.ctype }}
+          PLAN_URL: ${{ steps.gate.outputs.plan_url }}
+          ISSUE: ${{ github.event.issue.number }}
+          TITLE: ${{ github.event.issue.title }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          ACTION: ${{ steps.final.outputs.action }}
+          VERDICT: ${{ steps.final.outputs.verdict }}
+          ROUNDS: ${{ steps.final.outputs.rounds }}
+        run: |
+          set -euo pipefail
+          {
+            echo "Closes #$ISSUE"
+            echo
+            echo "Plan: $PLAN_URL"
+            echo
+            echo "Check verdict: $VERDICT after $ROUNDS round(s)."
+          } > "$RUNNER_TEMP/pr-body.md"
+          args=(--head "$BRANCH" --base "$DEFAULT_BRANCH" --title "$CTYPE: ${TITLE,,}" --body-file "$RUNNER_TEMP/pr-body.md")
+          if [ "$ACTION" = draft ]; then args+=(--draft); fi
+          gh pr create "${args[@]}"
+
+      - name: Post the findings
+        if: always() && (steps.final.outputs.action == 'draft' || steps.final.outputs.action == 'comment')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ github.event.issue.number }}
+          ACTION: ${{ steps.final.outputs.action }}
+          OUTCOME: ${{ steps.final.outputs.outcome }}
+          ROUNDS: ${{ steps.final.outputs.rounds }}
+          AHEAD: ${{ steps.final.outputs.ahead }}
+          FINDINGS: ${{ steps.final.outputs.findings_file }}
+        run: |
+          set -euo pipefail
+          {
+            echo '<!-- dev-execute-findings -->'
+            if [ "$ACTION" = draft ]; then
+              echo "A draft pull request was opened after $ROUNDS round(s); the check still fails:"
+            else
+              echo "No pull request was opened (last outcome: $OUTCOME, $ROUNDS round(s), $AHEAD commit(s) ahead):"
+            fi
+            echo
+            if [ -n "$FINDINGS" ] && [ -s "$FINDINGS" ]; then cat "$FINDINGS"; else echo "No round produced a result."; fi
+          } > "$RUNNER_TEMP/findings.md"
+          gh issue comment "$ISSUE" --body-file "$RUNNER_TEMP/findings.md"
+
+      - name: Upload the records
+        if: always() && steps.gate.outputs.ok == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: run-record-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/run-record-*.json
+          if-no-files-found: warn
+          retention-days: 90
