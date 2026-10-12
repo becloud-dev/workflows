@@ -2065,3 +2065,37 @@ Gaps (recorded, not closed):
 | Installation on all repositories | the App can write contents, issues and PRs on every repository | the user's decision, recorded |
 | Review blank lines (two before `### Defer`) | cosmetic | renderer change if wanted |
 | Review comment not marked stale after a newer commit on `main` | the issues come from the review as approved | compare the review's SHA with `HEAD` in the gate |
+
+### Release gate (2026-10-12)
+
+Source read (raw): `github/docs` `server-to-server-permissions.json` (fpt-2026-03-10):
+`POST /repos/{o}/{r}/statuses/{sha}` needs `statuses: write`, no additional permissions;
+`GET .../issues/{n}/events` needs `issues: read` with the "additional permissions" mark.
+`events-that-trigger-workflows.md`: `issues` runs on the last default-branch commit;
+`pull_request` runs in the context of the merge commit.
+
+Change: `workflows` `1883156` (`release-gate.yml`), `triage-sandbox` `f619bf4` (caller). The gate
+sets the commit status `release-gate` on the release PR head: success when `READY TO LIVE` is set
+by an owner and no `release-blocker` issue is open. Advisory: no ruleset requires it.
+
+Fixtures (jq 1.7.1, stub `gh`): 22 cases, 7 mutations caught; zizmor auditor: no findings on the
+shared workflow.
+
+Live results:
+
+| Check | Run | Status on `4d9fe9e` |
+|---|---|---|
+| `labeled` on PR #26 before the merge ref refreshed | none | no run started |
+| label by owner, #27 open (`issues` event) | `38261899164` | failure: open release-blocker: #27 |
+| label missing, #27 open | `38262077137` | failure: missing label READY TO LIVE; open release-blocker: #27 |
+| label set, #27 closed | `38263152468` | success |
+| merge of #26 | `release-please` `38263623779` | tag `v0.1.1` on `4715338`, Release created |
+
+Inference: a `pull_request` run takes its workflow file from the merge commit; on #26 the merge
+ref was stale after the caller push, so the PR event started nothing until later events (two runs
+after the merge). The `issues` event is the reliable trigger. Unverified: the output of the two
+post-merge runs (logs show the script, not its lines); the cause of the missed first event.
+
+Corrections: "Release PR not merged, `READY TO LIVE` not exercised, tag and release not created"
+is closed. Open: no ruleset (the gate does not block); the `refactor`/`perf`/`revert` types; the
+stale-review check; a non-owner labeler and a non-release open PR are fixture-only.
