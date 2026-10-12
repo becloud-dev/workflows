@@ -2274,3 +2274,46 @@ comes after the first push to the default branch.
 Not verified: that issue field values set through the API work on a new repository (the live run
 shows it); the organisation Project (the token lacks `read:project`); whether release-please
 treats a tag made through `git/refs` like the sandbox's `v0.1.0`.
+
+### Consumer template: build and live test (2026-10-12)
+
+Decisions (user, 2026-10-12): the template is a directory plus a bootstrap script; all 11
+callers; tested on a scratch repository, deleted afterwards.
+
+Change (`workflows`): `fe58880` (`templates/consumer/`: the 11 callers as the sandbox runs them
+minus the three "copy to the sandbox" header comments, `release-please-config.json`,
+`.release-please-manifest.json` at `0.1.0`, issue templates, `AGENTS.md` and `design-system.md`
+stubs), `0b4a993` and `1c1884b` (`bootstrap.sh`), `ab0036e` (`README.md`). The script reads the
+repository, its default branch tip, the organisation issue field `Priority` and the seed tag
+before it writes; then it creates six labels, sets `OWNERS`, `CHECK_COMMAND`, `TEST_COMMAND`,
+`TEST_PATHS` and `PRIORITY_FIELD_ID`, and creates tag `v<seed>` on the tip. Deviation from the
+plan: an existing tag is left as it is (its object printed) and not refused, so a re-run after a
+partial failure is not blocked.
+
+Fixtures (jq 1.7.1, stub `gh` applying the real `--jq` filters): 46 cases, 14 mutations caught
+(a first survivor differed only by an error message; the message is now asserted). Caller
+checker (inputs, required inputs, secrets, permissions against the reusable workflows): 9 callers
+OK, 2 inline jobs skipped, 3 deliberately broken callers fail. zizmor 1.30.1 auditor on the
+template: 27 findings, equal to the sandbox callers (9 `unpinned-uses` from `@main`, 8
+`excessive-permissions`, 8 `undocumented-permissions`, 1 `dangerous-triggers` accepted, 1
+`secrets-outside-env`).
+
+Live results (`becloud-dev/consumer-template-scratch`, public, created empty):
+
+| Step | Run or object | Result |
+|---|---|---|
+| first push, before the grant | `release-please` `38281215898` | failure: `client-id` empty (the org variable is not granted yet) |
+| bootstrap | labels, variables, tag | six labels, five variables, `v0.1.0` on `c99ac0b`, read back with `gh` |
+| `feat:` push `5a57828`, after the grant | `release-please` `38281407694` | PR #1 `chore(main): release 0.2.0`, notes Features, compare from `v0.1.0` |
+| PR head `7b383e3` | `pr-checks` `38281443740`; `release-gate` | check success; status failure "missing label READY TO LIVE" |
+| issue #2, label `triage` | `38281538887` | type `Feature`, `Priority` `Low` read back |
+| issue #2, label `RELEASE` | `38281642497` | plan comment posted |
+
+Inference: the org-level grant must precede the first push (the README order is corrected); the
+Priority issue field, the App installation and the lightweight seed tag work on a new
+repository in the organisation (one sample each).
+
+Not verified: `/approve` execution on a new repository (the pull request step meets the setting,
+accepted gap); the gate on a release PR with `READY TO LIVE` and a review; `SETUP_COMMAND`; a
+repository outside the organisation; the callers stay on `@main` (Security design). Cleanup: the
+scratch repository and its three grants are removed by the user.

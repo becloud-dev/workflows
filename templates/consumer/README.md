@@ -17,12 +17,13 @@ workflow `@main`.
 ## Order of use
 
 1. Create the repository on GitHub (owner).
-2. Copy the contents above, except `README.md` and `bootstrap.sh`, into a clone. Fill
+2. Grant the repository the organisation secrets `CLAUDE_CODE_OAUTH_TOKEN` and
+   `APP_PRIVATE_KEY` and the organisation variable `APP_CLIENT_ID` (visibility `selected`;
+   a settings step). Do this before the first push: without `APP_CLIENT_ID` the
+   `release-please` run on that push fails.
+3. Copy the contents above, except `README.md` and `bootstrap.sh`, into a clone. Fill
    `AGENTS.md`. When the seed version is not `0.1.0`, set it in `.release-please-manifest.json`
    and pass the same value as `--seed`. Commit and push to the default branch.
-3. Grant the repository the organisation secrets `CLAUDE_CODE_OAUTH_TOKEN` and
-   `APP_PRIVATE_KEY` and the organisation variable `APP_CLIENT_ID` (visibility `selected`;
-   a settings step).
 4. Run `bootstrap.sh` as the owner with `gh` logged in; `--dry-run` first:
 
        templates/consumer/bootstrap.sh --repo OWNER/NAME --owners LOGIN \
@@ -46,5 +47,5 @@ off. With it off, the pull request step of the development execution fails (acce
 - `CHECK_COMMAND` and `TEST_COMMAND` cannot contain a quote, backslash, dollar, backtick or
   newline (`dev-round` refuses them).
 - `SETUP_COMMAND` is optional and not set by the script.
-- `bootstrap.sh` creates no organisation secret, variable or Project; the grant in step 3 is
+- `bootstrap.sh` creates no organisation secret, variable or Project; the grant in step 2 is
   yours.
