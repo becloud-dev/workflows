@@ -22,6 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
+      contents: read # read the default branch tip to compare with the reviewed sha
       issues: read # list the open release-blocker issues and the label events
       pull-requests: read # find the release pull request and its labels
       statuses: write # set the release-gate status on the release pull request head
@@ -49,6 +50,8 @@ jobs:
           blockers=$(gh api --paginate -X GET "repos/$GITHUB_REPOSITORY/issues" \
             -f state=open -f labels="$BLOCKER" -f per_page=100 --jq '.[]' \
             | jq -s '[.[] | select(.pull_request == null) | .number]')
+          branch=$(gh api "repos/$GITHUB_REPOSITORY" --jq .default_branch)
+          tip=$(gh api "repos/$GITHUB_REPOSITORY/commits/$branch" --jq .sha)
           for n in $(jq -r '.[].number' <<< "$prs"); do
             sha=$(jq -r --argjson n "$n" '.[] | select(.number == $n) | .head.sha' <<< "$prs")
             labeled=$(jq --arg l "$READY" --argjson n "$n" \
@@ -63,6 +66,34 @@ jobs:
               case ",$OWNERS," in
                 *",$actor,"*) [ -n "$actor" ] || problems+=("$READY not set by an owner") ;;
                 *) problems+=("$READY not set by an owner") ;;
+              esac
+            fi
+            review=$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$n/comments" --jq '.[]' \
+              | jq -s '[.[] | select(.user.login == "github-actions[bot]"
+                  and (.body | startswith("<!-- release-review -->")))] | last // empty')
+            if [ -n "$review" ]; then
+              reviewed=$(jq -r '[(.body | split("\n") | .[1] // "")
+                  | match("^<!-- release-review-sha: ([0-9a-f]{40}) -->\r?$") | .captures[0].string]
+                  | first // ""' <<< "$review")
+              if [ -z "$reviewed" ]; then
+                problems+=("review has no recorded sha")
+              elif [ "$reviewed" != "$tip" ]; then
+                problems+=("review is stale (reviewed ${reviewed:0:7}, main ${tip:0:7})")
+              fi
+              edit=$(gh api graphql -f id="$(jq -r .node_id <<< "$review")" \
+                -f query='query($id: ID!) { node(id: $id) { ... on IssueComment { lastEditedAt editor { login } } } }' \
+                2> /dev/null || true)
+              editor=$(jq -r 'if (.data.node // null) == null then "unreadable"
+                  elif .data.node.lastEditedAt == null then "unedited"
+                  else (.data.node.editor.login // "unreadable") end' <<< "${edit:-null}" 2> /dev/null \
+                || echo unreadable)
+              case "$editor" in
+                unedited) ;;
+                unreadable) problems+=("review editor unreadable") ;;
+                *) case ",$OWNERS," in
+                     *",$editor,"*) ;;
+                     *) problems+=("review edited by non-owner") ;;
+                   esac ;;
               esac
             fi
             if [ "$(jq length <<< "$blockers")" -gt 0 ]; then
