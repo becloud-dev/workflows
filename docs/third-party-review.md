@@ -2249,3 +2249,28 @@ sandbox. PR #33 stays open and unmerged; the three test commits stay in the sand
 For plan 4: the caller template carries `release-please-config.json` with `changelog-sections`,
 `.release-please-manifest.json` (seed version equal to the seed tag) and `release-please.yml`
 without the `release-type` input.
+
+### Consumer template: facts read (2026-10-12)
+
+Source read: `workflows` `triage.yml` (lines 93, 150-158) and `release-issues.yml` (lines 115,
+167-170): `priority_field_id` is a required input, used as `jq --argjson id` in
+`issue_field_values`; an empty or non-numeric value fails the step that applies the verdict.
+Live read (`gh api`, owner token): `GET orgs/becloud-dev/issue-fields` lists the field `Priority`
+(`48149712`, single select Urgent, High, Medium, Low, visibility `organization_members_only`),
+`Start date`, `Target date` and `Effort`; `GET orgs/becloud-dev/issue-types` lists `Task`, `Bug`,
+`Feature` and `Project`, all enabled. Org secrets `CLAUDE_CODE_OAUTH_TOKEN` and
+`APP_PRIVATE_KEY` and org variable `APP_CLIENT_ID` have visibility `selected`, granted to
+`triage-sandbox` only. Sandbox settings: default workflow permissions `read`, approving pull
+requests off, no ruleset. `gh` 2.102.0 help and manual: `gh label create --force` updates an
+existing label; `gh variable set --body` sets a repository variable. `rest-api-description`
+(`api.github.com.json`): `POST /repos/{owner}/{repo}/git/refs` takes `ref` and `sha`, answers 201,
+409 or 422, and cannot create a reference in an empty repository.
+
+Inference: the Priority field is organisation-wide, so a new repository in the organisation can
+use the same id; the template looks the id up and does not hardcode it. A new repository needs a
+grant of the two secrets and the variable before any caller that uses them runs. The seed tag
+comes after the first push to the default branch.
+
+Not verified: that issue field values set through the API work on a new repository (the live run
+shows it); the organisation Project (the token lacks `read:project`); whether release-please
+treats a tag made through `git/refs` like the sandbox's `v0.1.0`.
