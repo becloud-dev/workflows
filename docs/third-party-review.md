@@ -2380,3 +2380,40 @@ each; A10 in the plan was the model's own addition).
 
 Not verified: a plan with no security angle live (the "no category applies" line is fixture
 only); a release that does not touch the file holding a defect; cost and variance per model.
+
+### Security design: pinning by tag (2026-10-12)
+
+Decisions (user, 2026-10-12): callers reference the moving tag `v0` of `workflows`, not `@main`;
+the sandbox stays on `@main` (to be archived, no further change); no separate release test, the
+first real release of `workflows` is the test; a release creates the exact tag `v0.x.y` and
+moves `v0`.
+
+Source read (raw): `googleapis/release-please-action` at `45996ed` `README.md` (root outputs
+`release_created`, `major`, `minor`, `sha`; the major and minor tag example); `github/docs` on
+`$/` (record "Self-repository action reference": resolves to the commit of the running
+workflow); `rest-api-description` (`PATCH` and `POST` on `git/refs`).
+
+Change (`workflows`): `6edb362` (`release-please-config.json` with the sections,
+`.release-please-manifest.json` at `0.1.0`, `release-please.yml` with the step "Move the major
+tag": `PATCH` with `force` when the tag exists, `POST` otherwise, `MAJOR` and `SHA` validated),
+`0712943` (the nine reusable callers of `templates/consumer/` on `@v0`, README limits). Grants:
+`APP_PRIVATE_KEY` and `APP_CLIENT_ID` to `workflows` only. Tags `v0.1.0` and `v0` on `0712943`,
+created from a temporary branch before `main` was pushed, so the first run found its baseline.
+
+Fixtures (stub `gh`, real `run:` block): 16 cases, 7 mutations caught. Defect found and fixed
+before use: the guard `[[ MAJOR ]] && [[ SHA ]]` under `set -e` did not stop on an invalid
+`MAJOR`, because a failing non-final operand of an `&&` list does not trigger errexit (class: a
+`set -e` guard written as an `&&` chain; caught by a fixture with an invalid first operand).
+zizmor 1.30.1 on `release-please.yml`: `secrets-outside-env` on the App key, accepted as on the
+sandbox.
+
+Live: `release-please` run `38284908822` on `workflows`: success; "looking for tagName:
+v0.1.0"; no release PR; the tag step skipped as no release was created.
+
+Inference: the seed tag is a sufficient baseline; the tag step runs only when a release is
+created; `$/` should resolve to the tagged commit (documented, not run).
+
+Not verified: the first real release (tag creation, the `sha` output, the move of `v0`); a tag
+ruleset on `refs/tags/v*` (settings step, and rulesets on tags for this organisation's plan);
+`$/` and the `prompts` checkout on a caller at `@v0` live; the template callers on `@v0` in a
+real project run.
