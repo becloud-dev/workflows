@@ -1,0 +1,19 @@
+name: local-planner-backlog
+
+on:
+  workflow_dispatch:
+
+jobs:
+  planner-backlog:
+    concurrency:
+      group: planner-backlog
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      issues: read
+    uses: $/.github/workflows/planner-backlog.yml
+    with:
+      model: claude-haiku-5-5
+      owners: ${{ vars.OWNERS }}
+    secrets:
+      claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
