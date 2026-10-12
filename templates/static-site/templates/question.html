@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}{{ page.title }} · {{ config.title }}{% endblock title %}
+{% block content %}
+{% set domains = load_data(path="data/domains.yaml") %}
+<article class="question" id="question">
+  <p class="eyebrow">
+    {% for d in domains %}{% if d.id == page.extra.domain_id %}Domain {{ d.id }} · {{ d.title }}{% endif %}{% endfor %}
+  </p>
+  <h1>{{ page.title }}</h1>
+  <p>{{ page.extra.question_text }}</p>
+  {# The Worker checks the answer; `correct` is never printed in this page. #}
+  <form hx-post="/quiz/check" hx-target="#feedback" hx-swap="innerHTML">
+    <input type="hidden" name="question_id" value="{{ page.extra.question_id }}">
+    <fieldset>
+      <legend class="visually-hidden">Options</legend>
+      {% for o in page.extra.options %}
+      <label class="option"><input type="radio" name="option" value="{{ o.id }}" required> <span><strong>{{ o.id }}.</strong> {{ o.text }}</span></label>
+      {% endfor %}
+    </fieldset>
+    <button type="submit" class="primary">Check answer</button>
+  </form>
+  <div id="feedback" aria-live="polite"></div>
+  {# Pulled into #feedback by the Worker's answer through hx-select; hidden until then. #}
+  <section id="rationale" hidden>
+    <h2>Why</h2>
+    <p>{{ page.extra.rationale.summary }}</p>
+    <ul>
+      {% for o in page.extra.options %}
+      <li><strong>{{ o.id }}.</strong> {{ page.extra.rationale.breakdown[o.id] }}</li>
+      {% endfor %}
+    </ul>
+  </section>
+</article>
+{% endblock content %}

@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>{{ section.title }}</h1>
+{{ section.content | safe }}
+<ul class="cards">
+  <li><a href="{{ get_url(path='@/study/_index.md') }}">Study course</a></li>
+  <li><a href="{{ get_url(path='@/questions/_index.md') }}">Practice questions</a></li>
+</ul>
+{% endblock content %}

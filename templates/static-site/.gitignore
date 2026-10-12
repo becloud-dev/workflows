@@ -1,0 +1,8 @@
+# Zola output; wrangler serves it as static assets
+public/
+node_modules/
+# written by `npm run content`
+src/generated/
+.wrangler/
+playwright-report/
+test-results/

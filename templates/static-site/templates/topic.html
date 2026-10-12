@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}{{ page.title }} · {{ config.title }}{% endblock title %}
+{% block content %}
+{% set domains = load_data(path="data/domains.yaml") %}
+<article class="topic">
+  <p class="eyebrow">
+    {% for d in domains %}{% if d.id == page.extra.domain_id %}Domain {{ d.id }} · {{ d.title }}{% endif %}{% endfor %}
+    · {{ page.extra.estimated_reading_time }}
+  </p>
+  <h1>{{ page.title }}</h1>
+  <ul class="summary">
+    {% for line in page.extra.summary %}<li>{{ line }}</li>{% endfor %}
+  </ul>
+  {% if page.extra.comparison_table %}
+  {% set t = page.extra.comparison_table %}
+  <table>
+    <thead><tr>{% for h in t.headers %}<th>{{ h }}</th>{% endfor %}</tr></thead>
+    <tbody>{% for row in t.rows %}<tr>{% for cell in row %}<td>{{ cell }}</td>{% endfor %}</tr>{% endfor %}</tbody>
+  </table>
+  {% endif %}
+  {{ page.content | safe }}
+  {% if page.extra.exam_tip %}<aside class="callout tip"><strong>Exam tip.</strong> {{ page.extra.exam_tip }}</aside>{% endif %}
+  {% if page.extra.exam_trap %}<aside class="callout trap"><strong>Exam trap.</strong> {{ page.extra.exam_trap }}</aside>{% endif %}
+  {# The Worker answers this with the "mark complete" control for the visitor's cookie. #}
+  <div id="progress" hx-get="/progress/{{ page.extra.topic_id }}" hx-trigger="load" hx-swap="outerHTML"></div>
+</article>
+{% endblock content %}

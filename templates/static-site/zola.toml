@@ -1,0 +1,11 @@
+# Site configuration. The build output is `public/`, which wrangler serves as static assets.
+base_url = "https://example.com"
+title = "Study Platform"
+description = "A study course and practice questions."
+default_language = "en"
+generate_feeds = false
+build_search_index = false
+minify_html = false
+
+[extra]
+disclaimer = "This site is independent and is not affiliated with or endorsed by the certification provider."
