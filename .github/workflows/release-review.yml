@@ -150,6 +150,7 @@ jobs:
           item='to_entries[] | "\(.key + 1). **\(.value.title)** (`\(.value.location)`, \(.value.type))\n   \(.value.body | gsub("\n"; "\n   "))\n"'
           {
             echo '<!-- release-review -->'
+            echo "<!-- release-review-sha: $end -->"
             echo "## Release review: $label"
             echo
             jq -r .summary "$f"
