@@ -26,6 +26,7 @@ upstream binary is downloaded to `tests/.cache/jq` and its SHA-256 is verified b
 | `release-issues` | approval gate and issue creation |
 | `release-please-tag` | moving the major tag after a release |
 | `release-review` | the command gate and the review comment |
+| `zizmor-audit` | the zizmor job of `ci.yml`: the audit and the comparison of findings, the path filter, fail-closed reports |
 
 A suite named like a step is the place to add a case when that step changes: write the case, see it
 fail, then change the step.

@@ -30,3 +30,60 @@ jobs:
 
       - name: Run the suites
         run: bash tests/run-all.sh
+
+  # Audits the workflows and actions of the head and of the base, and fails on the findings the pull
+  # request adds; the findings main already has do not block. The check name stays the same when skipped.
+  zizmor:
+    name: zizmor audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the pull request head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: head
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check out the base branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.base_ref }}
+          path: base
+          persist-credentials: false
+
+      - name: Check whether the pull request changes workflows or actions
+        id: scope
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          changed=$(git -C head diff --name-only "$BASE_SHA...$HEAD_SHA" -- .github/workflows .github/actions)
+          if [ -n "$changed" ]; then echo "audit=true" >> "$GITHUB_OUTPUT"; else echo "audit=false" >> "$GITHUB_OUTPUT"; fi
+
+      - name: Audit the base and head trees with zizmor
+        if: steps.scope.outputs.audit == 'true'
+        run: |
+          for tree in base head; do
+            docker run --rm -v "$PWD/$tree/.github:/audit:ro" ghcr.io/zizmorcore/zizmor:1.30.1@sha256:a2eb396d886c053073405c7a980f2139ba2248ec172243cfa3841e57196e8101 --offline --persona=auditor --format=json --no-exit-codes /audit > "$RUNNER_TEMP/zizmor-$tree.json"
+            [ -s "$RUNNER_TEMP/zizmor-$tree.json" ] && jq -e 'type == "array"' "$RUNNER_TEMP/zizmor-$tree.json" > /dev/null || { echo "zizmor wrote no usable report for $tree" >&2; exit 1; }
+          done
+
+      - name: Report the findings the pull request adds
+        if: steps.scope.outputs.audit == 'true'
+        run: |
+          for report in "$RUNNER_TEMP/zizmor-base.json" "$RUNNER_TEMP/zizmor-head.json"; do
+            [ -s "$report" ] && jq -e 'type == "array"' "$report" > /dev/null || { echo "zizmor report missing, empty or not a JSON array: $report" >&2; exit 1; }
+          done
+          new=$(jq -rn --slurpfile base "$RUNNER_TEMP/zizmor-base.json" --slurpfile head "$RUNNER_TEMP/zizmor-head.json" '
+            def key: [.ident, (.locations[0].symbolic.key.Local.verbatim_path // ""), (.locations[0].symbolic.annotation // "")] | @json;
+            def counts: reduce (.[] | key) as $k ({}; .[$k] += 1);
+            ($base[0] | counts) as $before
+            | $head[0] | group_by(key) | .[]
+            | select(length > ($before[.[0] | key] // 0))
+            | .[0] | "new finding: \(.ident) in \(.locations[0].symbolic.key.Local.verbatim_path // "?") (\(.locations[0].symbolic.annotation // "")): \((.locations[0].concrete.feature // "") | split("\n") | .[0])"
+          ') || { echo "cannot compare the zizmor reports" >&2; exit 1; }
+          if [ -n "$new" ]; then echo "$new"; exit 1; fi
