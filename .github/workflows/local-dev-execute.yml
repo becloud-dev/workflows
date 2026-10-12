@@ -1,0 +1,27 @@
+name: local-dev-execute
+
+on:
+  issue_comment:
+    types: [created]
+
+jobs:
+  dev-execute:
+    if: ${{ !github.event.issue.pull_request && startsWith(github.event.comment.body, '/approve') }}
+    concurrency:
+      group: dev-execute-${{ github.event.issue.number }}
+      cancel-in-progress: false
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    uses: $/.github/workflows/dev-execute.yml
+    with:
+      execute_model: claude-haiku-5-5
+      check_model: claude-sonnet-5-5
+      owners: ${{ vars.OWNERS }}
+      setup_command: ${{ vars.SETUP_COMMAND }}
+      check_command: ${{ vars.CHECK_COMMAND }}
+      test_command: ${{ vars.TEST_COMMAND }}
+      test_paths: ${{ vars.TEST_PATHS }}
+    secrets:
+      claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}

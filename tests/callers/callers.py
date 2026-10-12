@@ -15,6 +15,9 @@ for f in sorted(glob.glob(os.path.join(T, "*.yml"))):
         if not u:
             print(f"skip   {os.path.basename(f)}:{jn} (inline job)"); continue
         ref = u.split("@")[0].replace("becloud-dev/workflows/", "")
+        for prefix in ("$/", "./"):  # same-repository forms
+            if ref.startswith(prefix):
+                ref = ref[len(prefix):]
         r = yaml.safe_load(open(os.path.join(W, ref)))
         wc = on(r)["workflow_call"]
         ins, secs = wc.get("inputs", {}) or {}, wc.get("secrets", {}) or {}

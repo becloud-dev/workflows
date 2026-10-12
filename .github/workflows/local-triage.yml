@@ -1,0 +1,22 @@
+name: local-triage
+
+on:
+  issues:
+    types: [labeled]
+
+jobs:
+  triage:
+    if: github.event.label.name == 'triage'
+    concurrency:
+      group: triage-${{ github.event.issue.number }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      issues: write
+    uses: $/.github/workflows/triage.yml
+    with:
+      model: claude-haiku-5-5
+      priority_field_id: ${{ vars.PRIORITY_FIELD_ID }}
+      owners: ${{ vars.OWNERS }}
+    secrets:
+      claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}

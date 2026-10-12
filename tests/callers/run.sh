@@ -9,6 +9,11 @@ out=$(python3 -I callers.py "$CALLERS" "$ROOT"); rc=$?
 [ "$rc" = 0 ] && ok || bad "template callers: $(printf '%s\n' "$out" | grep -v '^OK' | head -3 | tr '\n' ' ')"
 [ "$(printf '%s\n' "$out" | grep -c '^OK')" -ge 9 ] && ok || bad "fewer than 9 callers checked"
 
+# The callers this repository runs on itself (local-*.yml) are checked the same way.
+own=$(python3 -I callers.py "$ROOT/.github/workflows" "$ROOT"); orc=$?
+[ "$orc" = 0 ] && ok || bad "own callers: $(printf '%s\n' "$own" | grep -v '^OK\|^skip' | head -3 | tr '\n' ' ')"
+[ "$(printf '%s\n' "$own" | grep -c '^OK.*local-')" -ge 6 ] && ok || bad "fewer than 6 own callers checked"
+
 # The checker must be able to fail: break three callers in three ways.
 bad_dir=$WORK/bad; mkdir -p "$bad_dir"
 cp "$CALLERS/release-gate.yml" "$CALLERS/triage.yml" "$CALLERS/dev-execute.yml" "$bad_dir/"
