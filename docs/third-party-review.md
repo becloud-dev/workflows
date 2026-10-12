@@ -695,6 +695,46 @@ manifest commit filter not read); behavior of an App token for release PR checks
 for a PAT only); that the action major `@v5` is the current one for new setups (latest release
 tag, not the setup text).
 
+### Release tooling, stage 5 read (2026-10-12)
+
+Sources: raw `googleapis/release-please` v17.11.2 (`src/manifest.ts`, `src/commit.ts`,
+`src/strategies/base.ts`, `src/versioning-strategies/default.ts`, README), raw
+`googleapis/release-please-action` `main` (`action.yml`, README), raw `github/docs`
+(`events-that-trigger-workflows.md`, the `pull_request` activity types reusable).
+
+| Topic | Finding |
+|---|---|
+| Releasable units | README: "feat", "fix" and "deps". Code: no type filter on the path read; every parsed commit reaches the strategy, and a PR is skipped only at zero parsed commits (`base.ts:286`). Other types bump patch (`default.ts:104`) |
+| Unparsed commits | Dropped with a debug log (`commit.ts:442`); a non-conventional squash title never counts |
+| Tagging | Considers merged PRs carrying all of `autorelease: pending`; then swaps to `autorelease: tagged` (`manifest.ts:1155`, `1307`) |
+| Token | `token` input is a string defaulting to `github.token`; `GITHUB_TOKEN` tags and PRs start no workflows (README); `pull_request` runs on a `GITHUB_TOKEN` PR need approval, and other events start no run except `workflow_dispatch` and `repository_dispatch` (events page) |
+| Version | Latest `release-please-action` is `v5.0.0` (2026-04-22), tag `v5` exists, `node24`; Patagonia uses `v4` |
+| Gate events | `pull_request`: `labeled`, `unlabeled`, `synchronize`; `issues`: `closed`, `reopened`, `labeled`, `unlabeled`; `issue_comment` covers PRs (`github.event.issue.pull_request`); no `pull_request` run on a PR with a merge conflict |
+
+Correction: the "Implications" bullet above that says `perf`, `refactor` and `revert` may not
+produce a release PR rests on the README list. The code read shows no such filter; the README
+claim and the code disagree, and neither is run.
+
+Implications (inference):
+
+- A "zero open `release-blocker`" check on the release PR is not re-run when a blocker issue
+  closes (an `issues` event, not `pull_request`). The gate is either evaluated at deploy time, or
+  an `issues`-triggered job re-evaluates it and writes a status to the PR head.
+- The release PR needs an App token (checks run, owner can approve); the action takes any token
+  string.
+- A workflow must not strip `autorelease: pending` from a release PR before merge.
+- A consumer outside `becloud-dev` supplies its own credential through the caller's `secrets:`;
+  the org secret is readable only by repositories in the organization it is scoped to.
+
+Decision (user, 2026-10-12): the `release-blocker` gate is evaluated at deploy or merge time (a
+job that fails while a `release-blocker` issue is open), not by an `issues`-triggered job that
+writes a status to the release PR. Credential stays an org-level secret inside `becloud-dev`
+(Round 3 item 1 unchanged).
+
+Unverified: types that alone create a release PR (needs a run); an App installation token
+starting runs for release PR events (documented for `GITHUB_TOKEN` only); whether the changelog
+layer or a plugin drops types before this path (not read).
+
 ### Monitoring and metrics, read 2026-10-11
 
 Sources: `anthropics/claude-code-action` at commit `1d6de8c` (`action.yml`,
