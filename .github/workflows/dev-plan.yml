@@ -106,7 +106,7 @@ jobs:
           claude_args: |
             --model ${{ inputs.model }}
             --allowedTools "Read,Grep,Glob"
-            --json-schema '{"type":"object","properties":{"outcome":{"type":"string","enum":["planned","needs_info"]},"rationale":{"type":"string"},"questions":{"type":"array","items":{"type":"string"},"maxItems":5},"objective":{"type":"string"},"steps":{"type":"array","items":{"type":"string"},"maxItems":10},"spec":{"type":"array","maxItems":10,"items":{"type":"object","properties":{"test":{"type":"string"},"asserts":{"type":"string"}},"required":["test","asserts"]}},"acceptance_criteria":{"type":"array","items":{"type":"string"},"maxItems":10},"security":{"type":"array","maxItems":10,"items":{"type":"object","properties":{"category":{"type":"string","enum":["A01","A02","A03","A04","A05","A06","A07","A08","A09","A10"]},"risk":{"type":"string"},"control":{"type":"string"}},"required":["category","risk","control"]}},"files":{"type":"array","items":{"type":"string"}},"risks":{"type":"array","items":{"type":"string"}}},"required":["outcome","rationale"]}'
+            --json-schema '{"type":"object","properties":{"outcome":{"type":"string","enum":["planned","needs_info"]},"rationale":{"type":"string"},"questions":{"type":"array","items":{"type":"string"},"maxItems":5},"objective":{"type":"string"},"steps":{"type":"array","items":{"type":"string"},"maxItems":10},"spec":{"type":"array","maxItems":10,"items":{"type":"object","properties":{"test":{"type":"string"},"asserts":{"type":"string"}},"required":["test","asserts"]}},"acceptance_criteria":{"type":"array","items":{"type":"string"},"maxItems":10},"security":{"type":"array","maxItems":10,"items":{"type":"object","properties":{"category":{"type":"string","enum":["A01","A02","A03","A04","A05","A06","A07","A08","A09","A10"]},"risk":{"type":"string"},"control":{"type":"string"},"criterion":{"type":"integer","minimum":1},"test":{"type":"integer","minimum":1}},"required":["category","risk","control","criterion","test"]}},"files":{"type":"array","items":{"type":"string"}},"risks":{"type":"array","items":{"type":"string"}}},"required":["outcome","rationale"]}'
 
       - name: Post the plan
         if: steps.plan.outputs.structured_output != ''
@@ -138,13 +138,38 @@ jobs:
                  and (.spec | type == "array" and length >= 1 and length <= 10)
                  and (.acceptance_criteria | type == "array" and length >= 2 and length <= 10)
                  and (.security | type == "array" and length <= 10)
-                 and all(.security[]; .category | test("^A(0[1-9]|10)$"))
-                 and ([.security[].category] | length == (unique | length))
-                 and (. as $p | all(.security[]; . as $s
-                       | any($p.acceptance_criteria[]; startswith($s.category + ":"))
-                         and any($p.spec[]; .asserts | startswith($s.category + ":"))))
                  and (.files | type == "array" and length >= 1)
                  and (.risks | type == "array")' "$f" > /dev/null
+          # Each security control points at the acceptance criterion that states it and the test that pins
+          # it, by number. A plan that does not is refused with the reasons, not silently dropped.
+          problems=$(jq -r '
+            . as $p
+            | ($p.acceptance_criteria | length) as $nc
+            | ($p.spec | length) as $ns
+            | def whole: type == "number" and . == floor;
+              [ .security[] | . as $s
+                | (if ($s.category | type == "string" and test("^A(0[1-9]|10)$")) then empty
+                   else "\($s.category): not a category from A01 to A10" end),
+                  (if ($s.criterion | whole) and $s.criterion >= 1 and $s.criterion <= $nc then empty
+                   else "\($s.category): criterion must be the number of an acceptance criterion (1 to \($nc))" end),
+                  (if ($s.test | whole) and $s.test >= 1 and $s.test <= $ns then empty
+                   else "\($s.category): test must be the number of a test in the list above (1 to \($ns))" end)
+              ]
+              + (if ([.security[].category] | length) == ([.security[].category] | unique | length) then []
+                 else ["a category appears twice; list each category once"] end)
+              | .[]' "$f")
+          if [ -n "$problems" ]; then
+            {
+              echo '<!-- dev-plan-error -->'
+              echo 'The development plan was refused because its security section does not link to the criteria and tests:'
+              echo
+              printf '%s\n' "$problems" | sed 's/^/- /'
+              echo
+              echo 'Remove and add the `RELEASE` label again to ask for a new plan.'
+            } > "$RUNNER_TEMP/plan.md"
+            gh issue comment "$ISSUE" --body-file "$RUNNER_TEMP/plan.md"
+            exit 1
+          fi
           {
             echo '<!-- dev-plan -->'
             echo '## Development plan'
@@ -162,7 +187,7 @@ jobs:
             echo
             if [ "$(jq '.security | length' "$f")" -gt 0 ]; then
               echo '**Security** (OWASP Top 10:2025)'
-              jq -r '.security[] | "- \(.category): \(.risk) Control: \(.control)"' "$f"
+              jq -r '.security[] | "- \(.category): \(.risk) Control: \(.control) (criterion \(.criterion), test \(.test))"' "$f"
             else
               echo '**Security** (OWASP Top 10:2025): no category applies.'
             fi

@@ -36,8 +36,8 @@ For `planned`, return:
   or a test run. Each traces to the issue or to the UX and UI research, or is the control of a
   `security` entry; add none they do not support.
 - `security`: 0 to 10 objects, one per OWASP Top 10:2025 category that this change touches,
-  with `category` (`A01` to `A10`), `risk` (one sentence: what could go wrong in this change)
-  and `control` (what the change does or tests to prevent it). Go through the ten categories
+  with `category` (`A01` to `A10`), `risk` (one sentence: what could go wrong in this change),
+  `control` (what the change does or tests to prevent it), `criterion` and `test` (below). Go through the ten categories
   below and include only those the issue and the repository files support; a change that
   touches none returns an empty list. Do not invent exposure.
   - A01 Broken Access Control: a user acts outside the intended permissions (missing deny by
@@ -60,9 +60,9 @@ For `planned`, return:
   - A10 Mishandling of Exceptional Conditions: errors and unusual states are not prevented,
     detected or handled safely.
 
-  Each `control` is also an acceptance criterion that starts with its category id (`A05: ...`)
-  and has a test in `spec` whose `asserts` starts with the same id; the workflow refuses a plan
-  where one is missing.
+  Each entry also names, by number, the `acceptance_criteria` item that states its control
+  (`criterion`, counting from 1) and the `spec` entry that pins it (`test`, counting from 1). The
+  workflow refuses a plan where a number is outside its list and says why.
 - `files`: the paths that will change or be created.
 - `risks`: strings; empty when none. Include every assumption the plan rests on that the issue
   does not state.
