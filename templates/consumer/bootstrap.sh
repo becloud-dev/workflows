@@ -87,9 +87,14 @@ else
   run gh api -X POST "repos/$repo/git/refs" -f "ref=refs/tags/$tag" -f "sha=$sha"
 fi
 
+if [ "$dry" = 1 ]; then
+  echo
+  echo "Dry run for $repo: nothing was written (default branch $branch, tip $sha)."
+else
+  echo
+  echo "Done for $repo (default branch $branch, tip $sha)."
+fi
 cat <<EOF
-
-Done for $repo (default branch $branch, tip $sha).
 Not done by this script (settings; run them yourself):
   - grant $repo the organisation secrets CLAUDE_CODE_OAUTH_TOKEN and APP_PRIVATE_KEY and the
     organisation variable APP_CLIENT_ID (their visibility is "selected");
