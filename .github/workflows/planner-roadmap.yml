@@ -40,7 +40,7 @@ jobs:
     timeout-minutes: 15
     if: contains(format(',{0},', inputs.owners), format(',{0},', github.event.sender.login))
     permissions:
-      contents: read
+      contents: read # check out the caller repository
       issues: write # create milestones and set the milestone of an issue; only when apply is true
     steps:
       - name: Check out the caller repository

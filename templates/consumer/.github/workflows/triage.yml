@@ -4,6 +4,8 @@ on:
   issues:
     types: [labeled]
 
+permissions: {}
+
 jobs:
   triage:
     if: github.event.label.name == 'triage'
@@ -11,8 +13,8 @@ jobs:
       group: triage-${{ github.event.issue.number }}
       cancel-in-progress: false
     permissions:
-      contents: read
-      issues: write
+      contents: read # check out the caller repository
+      issues: write # comment, label, set type and Priority, fix the body, create sub-issues
     uses: becloud-dev/workflows/.github/workflows/triage.yml@v0
     with:
       model: claude-haiku-5-5

@@ -23,7 +23,7 @@ jobs:
     timeout-minutes: 10
     if: contains(format(',{0},', inputs.owners), format(',{0},', github.event.sender.login))
     permissions:
-      contents: read
+      contents: read # check out the caller repository
       issues: read # list open issues with type and issue field values; the report writes nothing
     steps:
       - name: Check out the caller repository

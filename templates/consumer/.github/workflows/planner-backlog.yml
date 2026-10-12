@@ -3,14 +3,16 @@ name: planner-backlog
 on:
   workflow_dispatch:
 
+permissions: {}
+
 jobs:
   planner-backlog:
     concurrency:
       group: planner-backlog
       cancel-in-progress: false
     permissions:
-      contents: read
-      issues: read
+      contents: read # check out the caller repository
+      issues: read # list open issues with type and issue field values; the report writes nothing
     uses: becloud-dev/workflows/.github/workflows/planner-backlog.yml@v0
     with:
       model: claude-haiku-5-5

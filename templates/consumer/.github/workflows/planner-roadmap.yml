@@ -8,14 +8,16 @@ on:
         type: boolean
         default: false
 
+permissions: {}
+
 jobs:
   planner-roadmap:
     concurrency:
       group: planner-roadmap
       cancel-in-progress: false
     permissions:
-      contents: read
-      issues: write
+      contents: read # check out the caller repository
+      issues: write # create milestones and set the milestone of an issue; only when apply is true
     uses: becloud-dev/workflows/.github/workflows/planner-roadmap.yml@v0
     with:
       model: claude-sonnet-5-5

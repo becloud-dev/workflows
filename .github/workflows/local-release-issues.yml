@@ -4,6 +4,8 @@ on:
   issue_comment:
     types: [created]
 
+permissions: {}
+
 jobs:
   release-issues:
     if: ${{ github.event.issue.pull_request && startsWith(github.event.comment.body, '/approve') }}
@@ -11,9 +13,9 @@ jobs:
       group: release-issues-${{ github.event.issue.number }}
       cancel-in-progress: false
     permissions:
-      contents: read
-      issues: write
-      pull-requests: write
+      contents: read # read the repository
+      issues: write # create the issues, label them, set type and Priority, comment
+      pull-requests: write # read the release PR and comment on it
     uses: $/.github/workflows/release-issues.yml
     with:
       model: claude-sonnet-5-5
