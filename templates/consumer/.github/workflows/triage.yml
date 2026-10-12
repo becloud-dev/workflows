@@ -13,7 +13,7 @@ jobs:
     permissions:
       contents: read
       issues: write
-    uses: becloud-dev/workflows/.github/workflows/triage.yml@main
+    uses: becloud-dev/workflows/.github/workflows/triage.yml@v0
     with:
       model: claude-haiku-5-5
       priority_field_id: ${{ vars.PRIORITY_FIELD_ID }}

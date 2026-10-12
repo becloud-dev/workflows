@@ -2,7 +2,7 @@
 
 Files and a bootstrap script for a new repository that uses the shared workflows of
 `becloud-dev/workflows`. The callers are the ones `triage-sandbox` runs; each calls a reusable
-workflow `@main`.
+workflow at the moving tag `@v0`.
 
 ## Contents
 
@@ -43,7 +43,8 @@ off. With it off, the pull request step of the development execution fails (acce
 
 ## Limits
 
-- Callers use `@main`, not a pinned SHA; pinning is part of the Security design.
+- Callers use the moving tag `@v0` of `workflows`, not a SHA; a change to `workflows` reaches
+  them only after its release pull request is merged, which moves `v0`.
 - `CHECK_COMMAND` and `TEST_COMMAND` cannot contain a quote, backslash, dollar, backtick or
   newline (`dev-round` refuses them).
 - `SETUP_COMMAND` is optional and not set by the script.

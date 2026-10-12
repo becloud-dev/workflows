@@ -13,7 +13,7 @@ jobs:
     permissions:
       contents: read
       issues: write
-    uses: becloud-dev/workflows/.github/workflows/ux-ui.yml@main
+    uses: becloud-dev/workflows/.github/workflows/ux-ui.yml@v0
     with:
       model: claude-sonnet-5-5
       owners: ${{ vars.OWNERS }}

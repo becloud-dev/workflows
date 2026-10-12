@@ -14,7 +14,7 @@ jobs:
       contents: write
       pull-requests: write
       issues: write
-    uses: becloud-dev/workflows/.github/workflows/dev-execute.yml@main
+    uses: becloud-dev/workflows/.github/workflows/dev-execute.yml@v0
     with:
       execute_model: claude-haiku-5-5
       check_model: claude-sonnet-5-5

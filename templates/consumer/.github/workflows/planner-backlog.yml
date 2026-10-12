@@ -11,7 +11,7 @@ jobs:
     permissions:
       contents: read
       issues: read
-    uses: becloud-dev/workflows/.github/workflows/planner-backlog.yml@main
+    uses: becloud-dev/workflows/.github/workflows/planner-backlog.yml@v0
     with:
       model: claude-haiku-5-5
       owners: ${{ vars.OWNERS }}

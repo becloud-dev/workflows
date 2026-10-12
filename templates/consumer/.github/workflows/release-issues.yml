@@ -14,7 +14,7 @@ jobs:
       contents: read
       issues: write
       pull-requests: write
-    uses: becloud-dev/workflows/.github/workflows/release-issues.yml@main
+    uses: becloud-dev/workflows/.github/workflows/release-issues.yml@v0
     with:
       model: claude-sonnet-5-5
       priority_field_id: ${{ vars.PRIORITY_FIELD_ID }}

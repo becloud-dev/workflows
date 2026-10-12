@@ -16,7 +16,7 @@ jobs:
     permissions:
       contents: read
       issues: write
-    uses: becloud-dev/workflows/.github/workflows/planner-roadmap.yml@main
+    uses: becloud-dev/workflows/.github/workflows/planner-roadmap.yml@v0
     with:
       model: claude-sonnet-5-5
       owners: ${{ vars.OWNERS }}

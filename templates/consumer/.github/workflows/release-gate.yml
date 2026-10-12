@@ -24,6 +24,6 @@ jobs:
       issues: read # list the open release-blocker issues and the label events
       pull-requests: read # find the release pull request and its labels
       statuses: write # set the release-gate status on the release pull request head
-    uses: becloud-dev/workflows/.github/workflows/release-gate.yml@main
+    uses: becloud-dev/workflows/.github/workflows/release-gate.yml@v0
     with:
       owners: ${{ vars.OWNERS }}
