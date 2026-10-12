@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# stub gh for the site-deploy blockers step: `issue list` prints the fixture in GH_ISSUES, through the --jq filter when given
+set -euo pipefail
+case "$1 $2" in
+  "issue list") ;;
+  *) echo "stub gh: unhandled: $*" >&2; exit 99 ;;
+esac
+filter=""
+while [ $# -gt 0 ]; do
+  if [ "$1" = --jq ]; then filter=$2; shift; fi
+  shift
+done
+if [ -n "$filter" ]; then jq -r "$filter" "$GH_ISSUES"; else cat "$GH_ISSUES"; fi
