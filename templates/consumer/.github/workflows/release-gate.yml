@@ -1,0 +1,29 @@
+name: release-gate
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, labeled, unlabeled]
+  issues:
+    types: [labeled, unlabeled, closed, reopened]
+  push:
+    branches: [main]
+  workflow_run:
+    workflows: [release-review]
+    types: [completed]
+
+permissions: {}
+
+jobs:
+  release-gate:
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
+    concurrency:
+      group: release-gate
+      cancel-in-progress: false
+    permissions:
+      contents: read # read the default branch tip to compare with the reviewed sha
+      issues: read # list the open release-blocker issues and the label events
+      pull-requests: read # find the release pull request and its labels
+      statuses: write # set the release-gate status on the release pull request head
+    uses: becloud-dev/workflows/.github/workflows/release-gate.yml@main
+    with:
+      owners: ${{ vars.OWNERS }}

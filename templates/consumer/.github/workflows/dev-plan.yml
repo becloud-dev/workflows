@@ -1,0 +1,21 @@
+name: dev-plan
+
+on:
+  issues:
+    types: [labeled]
+
+jobs:
+  dev-plan:
+    if: github.event.label.name == 'RELEASE'
+    concurrency:
+      group: dev-plan-${{ github.event.issue.number }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      issues: write
+    uses: becloud-dev/workflows/.github/workflows/dev-plan.yml@main
+    with:
+      model: claude-sonnet-5-5
+      owners: ${{ vars.OWNERS }}
+    secrets:
+      claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}

@@ -1,0 +1,22 @@
+name: ux-ui
+
+on:
+  issues:
+    types: [labeled]
+
+jobs:
+  ux-ui:
+    if: github.event.label.name == 'UX/UI'
+    concurrency:
+      group: ux-ui-${{ github.event.issue.number }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      issues: write
+    uses: becloud-dev/workflows/.github/workflows/ux-ui.yml@main
+    with:
+      model: claude-sonnet-5-5
+      owners: ${{ vars.OWNERS }}
+      design_system_path: docs/design-system.md
+    secrets:
+      claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}

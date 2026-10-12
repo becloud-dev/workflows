@@ -1,0 +1,22 @@
+name: Project
+description: A body of work with several deliverables
+type: Project
+body:
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: What the project achieves and for whom
+    validations:
+      required: true
+  - type: textarea
+    id: deliverables
+    attributes:
+      label: Deliverables
+      description: One line per independently deliverable item
+    validations:
+      required: true
+  - type: textarea
+    id: out-of-scope
+    attributes:
+      label: Out of scope

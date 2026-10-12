@@ -1,0 +1,29 @@
+name: planner-roadmap
+
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: Create milestones and assign issues; false only reports
+        type: boolean
+        default: false
+
+jobs:
+  planner-roadmap:
+    concurrency:
+      group: planner-roadmap
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      issues: write
+    uses: becloud-dev/workflows/.github/workflows/planner-roadmap.yml@main
+    with:
+      model: claude-sonnet-5-5
+      owners: ${{ vars.OWNERS }}
+      release_days: 14
+      max_issues: 8
+      max_releases: 3
+      bug_budget: 0.30
+      apply: ${{ inputs.apply }}
+    secrets:
+      claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
