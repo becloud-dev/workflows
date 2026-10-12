@@ -2151,3 +2151,52 @@ checks out nothing and uses no event text.
 
 Corrections: gap rows "Review comment not marked stale after a newer commit on `main`" and
 "an editor who is not an owner is not checked" are closed by this record, with the limits above.
+
+### Stage 4b gaps: red check and fail path (2026-10-12)
+
+Decisions (user, 2026-10-12): `red_seen` closes by a workflow run, not by the checker's judgment;
+the fail path is exercised live with a fixture whose test fails only in the workflow run; the
+non-owner path stays fixture-only; the setting "Create and approve pull requests" stays off.
+
+Change: `workflows` `c06f7ad` (`dev-round` step `red`, input `test_paths` on `dev-execute.yml` and
+the composite, one sentence each in `dev-execute.md` and `dev-check.md`); `triage-sandbox`
+`5751011` (caller passes `vars.TEST_PATHS`, set to `tests/*`). Rule: the test files of the diff
+(added, modified or renamed; matched against the globs of `test_paths`) are checked out from
+`HEAD` into a detached worktree at the base, and the test command runs there. Exit 0 is
+`green_on_base` and forces `fail` in `verdict`; non-zero is `red`; no test file in the diff, no
+`test_paths` or no test command is `none`; a failed `git diff` or worktree is `error`. `none` and
+`error` leave the verdict as it is; the checker reads the `red check` section as evidence.
+
+Fixtures (jq 1.7.1, SHA-256 `5942c9b0...`; real git on a shallow clone): 9 `red` cases and 10
+`verdict` cases pass, 8 mutations caught; the composite suite (32) and the `dev-execute` suite
+(37, which includes the non-owner `/approve` cases) pass against the current files; zizmor 1.30.1
+auditor: one informational finding in `ux-ui.yml`, a file not touched. The first fixture run found
+that a failing `git diff` was reported as `none`; fixed before `c06f7ad`, it is `error`. The older
+`dev-execute-draft` suite fails 11 `gate` cases against the current workflow because its `gate()`
+does not set `OWNERS`, which the author gate reads; it passes 31 of 31 against its own copy and the
+37-case suite is its successor (inference from the diff; the old suite was not updated).
+
+Live results (sandbox):
+
+| Case | Run | Result |
+|---|---|---|
+| #30, red check | `38273662046` | round 1: `RED_STATE: red`, checker pass (4 of 4 criteria), branch pushed with 1 commit; step "Open the pull request" failed: `GitHub Actions is not permitted to create or approve pull requests` |
+| #32, `TEST_COMMAND=sh tests/gate_round.sh` | `38274849586` | round 1: executor `done`, `TEST_EXIT: 1`, `RED_STATE: red`, checker `fail`; round 2 read the findings and the executor reported `blocked`; findings comment, no push, no PR; run conclusion success |
+
+Inference: the red check works on a real run (one sample). The executor does not see `ROUND`: its
+test run passed and the workflow's failed, as designed. The `fail` verdict reaches the findings
+file and round 2 reads it (the executor's reply quotes the round 1 finding). The PR step failure
+is the accepted gap (setting off), not a result of this change.
+
+Not verified: the draft PR after a final `fail` (the executor blocked in round 2, the second
+sample of an executor that blocks instead of failing; covered by fixtures only, and the PR step
+would meet the same setting); `green_on_base` and `error` live; the non-owner `/approve` live (no
+second account). Limits of the red check: a non-zero exit on the base can come from a missing file
+and not from the reason the plan states; `setup_command` effects are not in the base worktree; a
+diff with no test file is not failed by this step; one sample per case.
+
+Corrections: gap row "`red_seen` is self-reported" is closed by this record, with the limits
+above; gap row "`fail` with a draft PR and round 2 `findings_file` not seen live" is half closed
+(`fail` and the round 2 findings seen, the draft PR not); "Non-owner trigger not run live" is
+unchanged. Cleanup: issues #30 and #32 closed, branch deleted, fixture dropped (`f084f48`), #31
+closed, `TEST_COMMAND` restored; `TEST_PATHS` stays set.
