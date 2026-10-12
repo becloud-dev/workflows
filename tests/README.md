@@ -22,6 +22,7 @@ upstream binary is downloaded to `tests/.cache/jq` and its SHA-256 is verified b
 | `dev-round-red` | the red check: new tests must fail on the base tree |
 | `install-zola` | the `install-zola` composite: pinned version, checksum and version check, nothing installed on failure |
 | `record-run` | what a run record holds and how it is named |
+| `release-config` | the release-please config of the repository and the consumer template: `bump-minor-pre-major` is set, the manifest is still 0.x |
 | `release-gate` | owner label, blockers, stale or edited review; also mutates the step |
 | `release-issues` | approval gate and issue creation |
 | `release-please-tag` | moving the major tag after a release |
