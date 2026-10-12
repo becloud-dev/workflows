@@ -2200,3 +2200,52 @@ above; gap row "`fail` with a draft PR and round 2 `findings_file` not seen live
 (`fail` and the round 2 findings seen, the draft PR not); "Non-owner trigger not run live" is
 unchanged. Cleanup: issues #30 and #32 closed, branch deleted, fixture dropped (`f084f48`), #31
 closed, `TEST_COMMAND` restored; `TEST_PATHS` stays set.
+
+### Release PR types: refactor, perf, revert (2026-10-12)
+
+Decisions (user, 2026-10-12): `refactor` is shown through config and the git-workflow table is
+kept; the types are tested by reading the notes of the release PR, with no new seed tag; the
+`refactor`-alone case is not isolated.
+
+Source read (raw): `googleapis/release-please` v17.6.0 `src/strategies/base.ts` (a release PR is
+skipped with "No user facing commits" when the generated notes are empty), `src/versioning-strategies/default.ts`
+(only a breaking change or `feat` bumps above patch; any other commit gives a patch),
+`src/changelog-notes/default.ts`, `src/manifest.ts`, `schemas/config.json`
+(`changelog-sections`); `conventional-changelog-conventionalcommits` v6.1.0 `writer-opts.js`
+(default types: `perf` and `revert` visible, `refactor` `hidden: true`);
+`googleapis/release-please-action` at `45996ed` (`action.yml`, `src/index.ts`: with the
+`release-type` input the manifest is built from inputs and the config file is not read; there is
+no input for `changelog-sections`). Not verified: the preset version the action resolves
+(package.json says `^6.0.0`).
+
+Change: `triage-sandbox` `6770ff7` adds `release-please-config.json` (package `.`,
+`release-type: simple`, `changelog-sections` with `feat`, `feature`, `fix`, `perf`, `revert` and
+`refactor` visible and `docs`, `style`, `chore`, `test`, `build`, `ci` hidden) and
+`.release-please-manifest.json` (`{".": "0.1.1"}`), and drops the `release-type` input from
+`release-please.yml` so the action runs in manifest mode.
+
+Live results (sandbox, release PR #33, all with one fix after `v0.1.1`: `d0948d2`):
+
+| State | Commits since `v0.1.1` added | Notes of the PR |
+|---|---|---|
+| default config, tip `615fae0` | `refactor` `64b909e`, `perf` `7007505`, `revert` `615fae0` | Bug Fixes (`fix`), Performance Improvements (`perf`), Reverts (`revert`); `refactor` absent |
+| manifest mode with sections, tip `6770ff7`, run `38278143232` | none | the same three, plus Code Refactoring (`64b909e`) |
+
+The title (`chore(main): release 0.1.2`), the head branch (`release-please--branches--main`), the
+label (`autorelease: pending`) and the PR number stayed the same across the switch; the
+`release-gate` status on the new head is failure, "missing label READY TO LIVE", the designed
+result for a release PR without the label.
+
+Inference: `perf` and `revert` release as patch under the default config; `refactor` does not
+appear in the notes, so under the default config a `refactor:`-only change would give no release
+PR (from the source, not run); with the sections config it is listed and releases as patch (the
+PR changed in place; "alone" not run). The git-workflow table holds only with this config.
+
+Not verified: `refactor` alone (a `fix` keeps the PR alive on this `main`); the tag format and
+the title after a real release in manifest mode (no release was merged); one sample per type;
+the preset version resolved by the action; the release PR types on a repository other than the
+sandbox. PR #33 stays open and unmerged; the three test commits stay in the sandbox history.
+
+For plan 4: the caller template carries `release-please-config.json` with `changelog-sections`,
+`.release-please-manifest.json` (seed version equal to the seed tag) and `release-please.yml`
+without the `release-type` input.
