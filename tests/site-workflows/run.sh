@@ -4,6 +4,7 @@
 cd "$(dirname "$0")"
 CI=$ROOT/.github/workflows/site-ci.yml
 E2E=$ROOT/.github/workflows/site-e2e.yml
+PRT=$ROOT/.github/workflows/pr-title.yml
 
 # broke <file> <case> <rule> <sed expression>: one edit of the file must change it, and check.py must fail naming the rule.
 broke() {
@@ -112,4 +113,45 @@ sys.exit(1 if errs else 0)
 PY
 src=$?
 [ "$src" = 0 ] && ok || bad "site-e2e.yml inputs, job or steps: $(cat "$WORK/e2e-shape.txt")"
+
+# pr-title.yml only: the real file passes, each rule is shown failing on a broken copy, and the inputs, job and step
+# have the stated shape. Its step has no run: block, so the broken copies add a run: step before the action step.
+out=$(python3 -I check.py "$PRT"); rc=$?
+[ "$rc" = 0 ] && ok || bad "real pr-title.yml: $out"
+broke "$PRT" trigger only-workflow-call 's/^  workflow_call:$/  pull_request:\n  workflow_call:/'
+broke "$PRT" top-level-removed top-level-permissions '/^permissions: {}$/d'
+broke "$PRT" top-level-scope top-level-permissions 's/^permissions: {}$/permissions:\n  contents: read/'
+broke "$PRT" job-permissions job-permissions '/^    permissions:$/,/pull-requests: read/d'
+broke "$PRT" pinned-uses pinned-uses 's/@48f256284bd46cdaab1048c3721360e808335d50/@v6/'
+broke "$PRT" expression-in-run expression-in-run 's/^    steps:$/    steps:\n      - name: x\n        run: echo "${{ inputs.types }}"/'
+broke "$PRT" github-env-write github-path-env 's/^    steps:$/    steps:\n      - name: x\n        run: echo "x=1" >> "$GITHUB_ENV"/'
+broke "$PRT" github-path-write github-path-env 's/^    steps:$/    steps:\n      - name: x\n        run: echo "$PWD" >> "$GITHUB_PATH"/'
+broke "$PRT" secrets-reference secrets-reference 's/GITHUB_TOKEN: \${{ github\.token }}/GITHUB_TOKEN: ${{ secrets.TOKEN }}/'
+
+python3 -I - "$PRT" > "$WORK/prt-shape.txt" 2>&1 <<'PY'
+import sys, yaml
+path = sys.argv[1]
+text = open(path).read()
+d = yaml.safe_load(open(path))
+on = d.get("on", d.get(True))
+inp = on["workflow_call"]["inputs"]
+job = d["jobs"]["title"]
+steps = job["steps"]
+errs = []
+if set(inp) != {"types", "scopes"}: errs.append("input set")
+types = inp.get("types") or {}
+if types.get("type") != "string" or types.get("default", "").splitlines() != ["build", "chore", "ci", "docs", "feat", "fix", "perf", "refactor", "revert", "style", "test"]: errs.append("types input")
+scopes = inp.get("scopes") or {}
+if scopes.get("type") != "string" or scopes.get("default") != "[a-z0-9-]+": errs.append("scopes input")
+if len(d["jobs"]) != 1 or job.get("permissions") != {"pull-requests": "read"} or job.get("runs-on") != "ubuntu-latest" or not isinstance(job.get("timeout-minutes"), int): errs.append("job settings")
+if "amannn/action-semantic-pull-request@48f256284bd46cdaab1048c3721360e808335d50 # v6.1.1" not in text: errs.append("pinned action comment")
+if len(steps) != 1: errs.append("step count")
+else:
+    s = steps[0]
+    if s.get("uses") != "amannn/action-semantic-pull-request@48f256284bd46cdaab1048c3721360e808335d50" or s.get("with") != {"types": "${{ inputs.types }}", "scopes": "${{ inputs.scopes }}"} or s.get("env") != {"GITHUB_TOKEN": "${{ github.token }}"} or "run" in s: errs.append("action step")
+print("; ".join(errs))
+sys.exit(1 if errs else 0)
+PY
+src=$?
+[ "$src" = 0 ] && ok || bad "pr-title.yml inputs, job or step: $(cat "$WORK/prt-shape.txt")"
 summary

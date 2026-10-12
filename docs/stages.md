@@ -20,6 +20,7 @@ file in the same pull request; `tests/dev-execute/run.sh` checks that every work
 | `ci.yml` | Run the test suites on a pull request | GITHUB_TOKEN | contents read |
 | `site-ci.yml` | Check a Zola and Worker site, called by a consumer repository | GITHUB_TOKEN | contents read |
 | `site-e2e.yml` | Run the Playwright end-to-end tests of a Zola and Worker site, called by a consumer repository | GITHUB_TOKEN | contents read |
+| `pr-title.yml` | Check the title of a pull request against the Conventional Commit types and scopes, called by a consumer repository | GITHUB_TOKEN | pull-requests read |
 
 ## The rule
 
