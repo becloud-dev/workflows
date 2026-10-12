@@ -2417,3 +2417,31 @@ Not verified: the first real release (tag creation, the `sha` output, the move o
 ruleset on `refs/tags/v*` (settings step, and rulesets on tags for this organisation's plan);
 `$/` and the `prompts` checkout on a caller at `@v0` live; the template callers on `@v0` in a
 real project run.
+
+### Static site template: facts read (2026-10-12)
+
+Source read: `getzola/zola` release `v0.23.6` assets (GitHub releases API: Linux `.tar.gz`
+assets carry a `sha256` digest) and `docs/content/documentation/getting-started/cli-usage.md`
+(`build` writes `public/` and removes it first; `check` builds without writing and fetches
+external links in Markdown, `--skip-external-links` skips them) and `configuration.md` (keys
+`base_url`, `default_language`, `output_dir`, `minify_html`, `build_search_index`, `[markdown]`,
+`[link_checker]`, `[extra]`); `cloudflare/cloudflare-docs` `workers/static-assets` (`routing`,
+`binding` with `run_worker_first` as an array of globs and `!` negatives, `headers`,
+`billing-and-limitations`), `workers/platform/limits` (20,000 files and 25 MiB per file on the
+Free plan) and `workers/testing/test-harness` (`createTestHarness()`, Playwright integration);
+npm registry on 2026-10-12 (`@cloudflare/vitest-plugin` 1.4.0: peer `vitest ^4.1.0 || ^5.0.0`,
+depends on `wrangler 4.149.0`; `wrangler` needs Node 22 or newer); htmx 2 `hx-select`,
+`hx-boost`, `hx-trigger`; RFC 6265 section 6.1 (user agents should store at least 4096 bytes per
+cookie, name, value and attributes together, and 50 cookies per domain); `bentoluizv/patagonia-trip`
+(private; `package.json`, `wrangler.jsonc`, workflows, hooks, `CLAUDE.md`, `CONTRIBUTING.md`,
+`src/index.tsx`, `src/shared/{theme.ts,http.tsx,ui/layout.tsx,ui/hx.tsx}`, `vitest.config.ts`,
+`e2e/fixtures.ts`).
+
+Inference: a Zola build into `public/` served by an assets Worker with `run_worker_first`
+limited to the dynamic routes keeps static pages free of Worker invocations; a Zola binary can
+be installed in CI from the release with its published SHA-256; a cookie value stays near 3 KB
+to leave room for attributes.
+
+Not verified: that `run_worker_first` patterns and `hx-select` behave as read on a built site
+(the template's own tests are the check); the Worker's behaviour with `vitest` 5 and the
+plugin (installed in phase 3); Zola template details for per-question pages.
