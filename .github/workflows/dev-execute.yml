@@ -33,8 +33,14 @@ on:
         type: string
         required: false
         default: ""
+      executor_app_client_id:
+        description: Client ID of the executor GitHub App, which pushes the branch and opens the pull request
+        type: string
+        required: true
     secrets:
       claude_code_oauth_token:
+        required: true
+      executor_app_private_key:
         required: true
 
 permissions: {}
@@ -46,8 +52,7 @@ jobs:
     timeout-minutes: 45
     if: contains(format(',{0},', inputs.owners), format(',{0},', github.event.sender.login))
     permissions:
-      contents: write # push the branch
-      pull-requests: write # open the pull request
+      contents: read # check out the repository and the prompts
       issues: write # comment
     steps:
       - name: Check out the caller repository
@@ -224,10 +229,21 @@ jobs:
             echo "ahead=$ahead"
           } >> "$GITHUB_OUTPUT"
 
+      - name: Mint the executor App token
+        id: executor_app
+        if: steps.final.outputs.action == 'pr' || steps.final.outputs.action == 'draft'
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ inputs.executor_app_client_id }}
+          private-key: ${{ secrets.executor_app_private_key }}
+          permission-contents: write
+          permission-pull-requests: write
+          permission-workflows: write
+
       - name: Push the branch
         if: steps.final.outputs.action == 'pr' || steps.final.outputs.action == 'draft'
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.executor_app.outputs.token }}
           BRANCH: ${{ steps.gate.outputs.branch }}
         run: |
           set -euo pipefail
@@ -236,7 +252,7 @@ jobs:
       - name: Open the pull request
         if: steps.final.outputs.action == 'pr' || steps.final.outputs.action == 'draft'
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.executor_app.outputs.token }}
           BRANCH: ${{ steps.gate.outputs.branch }}
           CTYPE: ${{ steps.gate.outputs.ctype }}
           PLAN_URL: ${{ steps.gate.outputs.plan_url }}

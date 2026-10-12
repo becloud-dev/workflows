@@ -21,6 +21,12 @@ workflow at the moving tag `@v0`.
    `APP_PRIVATE_KEY` and the organisation variable `APP_CLIENT_ID` (visibility `selected`;
    a settings step). Do this before the first push: without `APP_CLIENT_ID` the
    `release-please` run on that push fails.
+
+   Also grant the organisation secret `EXECUTOR_APP_PRIVATE_KEY` and the organisation variable
+   `EXECUTOR_APP_CLIENT_ID` (visibility `selected`), and install the executor App on the
+   repository. The development execution pushes its branch and opens its pull request with that
+   App; without them the execution stops at the push. What the App may do is recorded in
+   `docs/stages.md` of `workflows`.
 3. Copy the contents above, except `README.md` and `bootstrap.sh`, into a clone. Fill
    `AGENTS.md`. When the seed version is not `0.1.0`, set it in `.release-please-manifest.json`
    and pass the same value as `--seed`. Commit and push to the default branch.
@@ -39,7 +45,7 @@ workflow at the moving tag `@v0`.
 ## Settings left as they are
 
 Default workflow permissions `read`; "Allow GitHub Actions to create and approve pull requests"
-off. With it off, the pull request step of the development execution fails (accepted gap).
+off. The executor App opens the pull request, so the setting is not needed.
 
 ## Limits
 

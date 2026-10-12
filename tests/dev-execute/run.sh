@@ -159,4 +159,93 @@ newcase; mkrepo
 postrun comment blocked 1 0 ""
 grep -q 'No pull request was opened (last outcome: blocked, 1 round(s), 0 commit(s) ahead)' "$STUB_LOG" && grep -q 'No round produced a result' "$STUB_LOG" && ok "findings: comment text, no findings file" || bad "findings: comment"
 
+echo "# executor App token"
+python3 -I - "$ROOT/.github/workflows/dev-execute.yml" "$ROOT/.github/workflows/release-please.yml" > "$W/app.out" <<'PY'
+import sys, json, yaml
+d = yaml.safe_load(open(sys.argv[1]))
+rp = yaml.safe_load(open(sys.argv[2]))
+wc = (d.get("on") or d.get(True))["workflow_call"]
+job = d["jobs"]["dev-execute"]
+steps = job["steps"]
+def emit(ok, name): print(("ok|" if ok else "bad|") + name)
+is_mint = lambda s: str(s.get("uses", "")).startswith("actions/create-github-app-token@")
+mints = [s for s in steps if is_mint(s)]
+emit(len(mints) == 1, "app: exactly one App token step in the job")
+perms = job.get("permissions", {})
+emit(perms.get("contents") != "write" and perms.get("pull-requests") != "write",
+     "app: job permissions hold no contents or pull-requests write")
+if len(mints) != 1:
+    for n in ("push and PR take GH_TOKEN from the App token step",
+              "token scope is contents, pull-requests and workflows write only",
+              "only the push and PR steps reference the token",
+              "minted after the rounds, only for a pr or draft action",
+              "same pinned action as release-please"):
+        emit(False, "app: " + n)
+    emit("executor_app_private_key" in wc.get("secrets", {})
+         and wc["secrets"]["executor_app_private_key"].get("required") is True
+         and wc.get("inputs", {}).get("executor_app_client_id", {}).get("required") is True,
+         "app: workflow_call requires the executor App key and client id")
+    sys.exit(0)
+mint = mints[0]
+ref = f"steps.{mint.get('id', '')}.outputs.token"
+by_name = {s.get("name"): s for s in steps}
+push_pr = ["Push the branch", "Open the pull request"]
+emit(bool(mint.get("id")) and all(
+    ref in str((by_name.get(n) or {}).get("env", {}).get("GH_TOKEN", "")) for n in push_pr),
+    "app: push and PR take GH_TOKEN from the App token step")
+w = mint.get("with", {})
+scoped = {k: v for k, v in w.items() if k.startswith("permission-")}
+emit(scoped == {"permission-contents": "write", "permission-pull-requests": "write",
+                "permission-workflows": "write"},
+     "app: token scope is contents, pull-requests and workflows write only")
+users = sorted(s.get("name") for s in steps if s is not mint and ref in json.dumps(s))
+emit(users == sorted(push_pr), "app: only the push and PR steps reference the token")
+cond = str(mint.get("if", ""))
+names = [s.get("id") for s in steps]
+emit("steps.final.outputs.action == 'pr'" in cond and "steps.final.outputs.action == 'draft'" in cond
+     and "final" in names and steps.index(mint) > names.index("final"),
+     "app: minted after the rounds, only for a pr or draft action")
+rp_pins = {s["uses"] for j in rp["jobs"].values() for s in j["steps"] if is_mint(s)}
+emit(mint["uses"] in rp_pins, "app: same pinned action as release-please")
+emit("executor_app_private_key" in wc.get("secrets", {})
+     and wc["secrets"]["executor_app_private_key"].get("required") is True
+     and wc.get("inputs", {}).get("executor_app_client_id", {}).get("required") is True,
+     "app: workflow_call requires the executor App key and client id")
+PY
+while IFS='|' read -r r n; do [ "$r" = ok ] && ok || bad "$n"; done < "$W/app.out"
+
+echo "# stages record"
+python3 -I - "$ROOT" > "$W/stages.out" <<'PY'
+import sys, os
+root = sys.argv[1]
+def emit(ok, name): print(("ok|" if ok else "bad|") + name)
+path = os.path.join(root, "docs", "stages.md")
+if not os.path.exists(path):
+    for n in ("docs/stages.md exists", "every workflow has a row", "every row has an identity and permissions",
+              "the executor App row names exactly contents, pull-requests and workflows",
+              "states the rule for a stage that needs more than GITHUB_TOKEN"):
+        emit(False, "stages: " + n)
+    sys.exit(0)
+text = open(path).read()
+rows = []
+for line in text.splitlines():
+    if not line.lstrip().startswith("|"):
+        continue
+    cells = [c.strip() for c in line.strip().strip("|").split("|")]
+    if len(cells) >= 4 and cells[0].startswith("`") and cells[0].endswith("`"):
+        rows.append(cells)
+wf = sorted(f for f in os.listdir(os.path.join(root, ".github", "workflows"))
+            if f.endswith(".yml") and not f.startswith("local-"))
+listed = {r[0].strip("`") for r in rows}
+emit(True, "stages: docs/stages.md exists")
+emit(not [f for f in wf if f not in listed], "stages: every workflow has a row")
+emit(bool(rows) and all(r[2] and r[3] for r in rows), "stages: every row has an identity and permissions")
+ex = [r for r in rows if "executor App" in r[2]]
+perms = sorted(p.split()[0] for p in ex[0][3].split(",")) if len(ex) == 1 else None
+emit(perms == ["contents", "pull-requests", "workflows"],
+     "stages: the executor App row names exactly contents, pull-requests and workflows")
+emit("its own strict App" in text, "stages: states the rule for a stage that needs more than GITHUB_TOKEN")
+PY
+while IFS='|' read -r r n; do [ "$r" = ok ] && ok || bad "$n"; done < "$W/stages.out"
+
 summary

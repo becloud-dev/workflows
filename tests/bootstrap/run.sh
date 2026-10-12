@@ -60,6 +60,12 @@ grep -q 'gh variable set OWNERS --repo becloud-dev/scratch --body bentoluizv' "$
 [ "$(grep -c '^gh label create' "$LOG")" = 6 ] && ok || bad "happy: six labels"
 grep -q -- '--force' "$LOG" && ok || bad "happy: labels forced"
 grep -q 'CLAUDE_CODE_OAUTH_TOKEN' "$LOG.out" && ok || bad "happy: remaining steps printed"
+grep -q 'EXECUTOR_APP_PRIVATE_KEY' "$LOG.out" && grep -q 'EXECUTOR_APP_CLIENT_ID' "$LOG.out" && ok || bad "happy: executor App grants printed"
+! grep -q 'accepted gap' "$LOG.out" && ok || bad "happy: no accepted gap for the pull request step"
+! grep -q 'gh secret set' "$LOG" && ok || bad "happy: creates no secret"
+README=$ROOT/templates/consumer/README.md
+grep -q 'EXECUTOR_APP_PRIVATE_KEY' "$README" && grep -q 'EXECUTOR_APP_CLIENT_ID' "$README" && ok || bad "readme: names the executor App grants"
+! grep -q 'accepted gap' "$README" && ok || bad "readme: no accepted gap for the pull request step"
 grep -q '^Done for becloud-dev/scratch' "$LOG.out" && ok || bad "happy: says Done"
 
 run "custom seed"         0 12 X=1 -- "${ARGS[@]}" --seed 1.2.3

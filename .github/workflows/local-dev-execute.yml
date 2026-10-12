@@ -11,8 +11,7 @@ jobs:
       group: dev-execute-${{ github.event.issue.number }}
       cancel-in-progress: false
     permissions:
-      contents: write
-      pull-requests: write
+      contents: read
       issues: write
     uses: $/.github/workflows/dev-execute.yml
     with:
@@ -23,5 +22,7 @@ jobs:
       check_command: ${{ vars.CHECK_COMMAND }}
       test_command: ${{ vars.TEST_COMMAND }}
       test_paths: ${{ vars.TEST_PATHS }}
+      executor_app_client_id: ${{ vars.EXECUTOR_APP_CLIENT_ID }}
     secrets:
       claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+      executor_app_private_key: ${{ secrets.EXECUTOR_APP_PRIVATE_KEY }}
