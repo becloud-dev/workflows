@@ -98,6 +98,9 @@ cat <<EOF
 Not done by this script (settings; run them yourself):
   - grant $repo the organisation secrets CLAUDE_CODE_OAUTH_TOKEN and APP_PRIVATE_KEY and the
     organisation variable APP_CLIENT_ID (their visibility is "selected");
+  - grant $repo the organisation secret EXECUTOR_APP_PRIVATE_KEY and the organisation variable
+    EXECUTOR_APP_CLIENT_ID (visibility "selected"), and install the executor App on $repo: the
+    development execution pushes its branch and opens its pull request with that App;
   - default workflow permissions stay "read"; "Allow GitHub Actions to create and approve pull
-    requests" stays off (the development execution PR step then fails: accepted gap).
+    requests" stays off (the executor App opens the pull request, so it is not needed).
 EOF
