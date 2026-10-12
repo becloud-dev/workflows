@@ -28,7 +28,7 @@ jobs:
     permissions:
       contents: read
       issues: write # create the issues, label them, set type and Priority, comment
-      pull-requests: read # read the release PR
+      pull-requests: write # read the release PR and comment on it
     steps:
       - name: Check out the caller repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
