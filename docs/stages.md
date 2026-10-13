@@ -18,10 +18,6 @@ file in the same pull request; `tests/dev-execute/run.sh` checks that every work
 | `planner-roadmap.yml` | Create milestones and assign issues, only when `apply` is true | GITHUB_TOKEN | contents read, issues write |
 | `ux-ui.yml` | Post the UX and UI research | GITHUB_TOKEN | contents read, issues write |
 | `ci.yml` | Run the test suites on a pull request | GITHUB_TOKEN | contents read |
-| `site-ci.yml` | Check a Zola and Worker site, called by a consumer repository | GITHUB_TOKEN | contents read |
-| `site-e2e.yml` | Run the Playwright end-to-end tests of a Zola and Worker site, called by a consumer repository | GITHUB_TOKEN | contents read |
-| `site-deploy.yml` | Deploy a tagged Zola and Worker site with wrangler, only when no release-blocker issue is open, called by a consumer repository | GITHUB_TOKEN | contents read, issues read |
-| `pr-title.yml` | Check the title of a pull request against the Conventional Commit types and scopes, called by a consumer repository | GITHUB_TOKEN | pull-requests read |
 
 ## The rule
 
