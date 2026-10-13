@@ -31,6 +31,57 @@ jobs:
       - name: Run the suites
         run: bash tests/run-all.sh
 
+  # The Rust CLI under cli/: format, lints, tests and the dependency policy on every pull request, so the
+  # ruleset can require the check. The toolchain is cli/rust-toolchain.toml's (rustup installs it when the
+  # runner image lacks it); cargo-deny is a pinned release binary checked against its SHA-256.
+  cli:
+    name: Rust CLI
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read # check out the repository to build and test the CLI
+    defaults:
+      run:
+        working-directory: cli
+    env:
+      CARGO_DENY_VERSION: 0.20.2
+      CARGO_DENY_SHA256: 9f12ed4c49936e09b48bf862b595cde2fe64fcbd9d74dfacac6131ca824c8d5f
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Show the toolchain
+        run: |
+          rustup show active-toolchain
+          cargo --version
+
+      - name: Check the format
+        run: cargo fmt --check
+
+      - name: Lint
+        run: cargo clippy --locked -- -D warnings
+
+      - name: Test
+        run: |
+          start=$(date +%s)
+          cargo test --locked --no-run
+          echo "- build of the CLI tests: $(( $(date +%s) - start )) s" >> "$GITHUB_STEP_SUMMARY"
+          cargo test --locked
+
+      - name: Install cargo-deny
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/cargo-deny.tar.gz"
+          curl -fsSL -o "$archive" "https://github.com/EmbarkStudios/cargo-deny/releases/download/$CARGO_DENY_VERSION/cargo-deny-$CARGO_DENY_VERSION-x86_64-unknown-linux-musl.tar.gz"
+          echo "$CARGO_DENY_SHA256  $archive" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/cargo-deny"
+          tar xzf "$archive" --strip-components=1 -C "$RUNNER_TEMP/cargo-deny"
+
+      - name: Check the dependencies
+        run: '"$RUNNER_TEMP/cargo-deny/cargo-deny" check'
+
   # Audits the workflows, actions and consumer templates of the head and of the base, and fails on the
   # findings the pull request adds; the findings main already has do not block. The check name stays the
   # same when skipped.

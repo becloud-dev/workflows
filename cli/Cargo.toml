@@ -1,0 +1,16 @@
+# The CLI that runs the steps of the workflows in this repository: it fetches the inputs, makes every
+# agent call through a pinned `claude -p --restricted`, enforces the rules and records the run. Callers
+# build it from source at `job.workflow_sha` with `--locked`, so the dependency list is build time.
+[package]
+name = "becloud-workflows"
+version = "0.0.0" # not released on its own: the repository's tag versions it (release-please)
+edition = "2024"
+publish = false
+license = "MIT"
+
+[[bin]]
+name = "wf"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4.6.7", features = ["derive"] }

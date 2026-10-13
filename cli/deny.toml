@@ -1,0 +1,23 @@
+# cargo deny check: advisories, licenses, bans and sources of every crate the CLI builds with.
+# Format of cargo-deny 0.20.2 (`cargo deny init`); the CI job pins that version.
+
+[graph]
+# Callers and CI build on GitHub's Ubuntu runners; crates for other targets are not built.
+targets = ["x86_64-unknown-linux-gnu"]
+
+[advisories]
+ignore = []
+
+[licenses]
+# The licenses of the crates in Cargo.lock today; a new license is added on purpose, not by a bump.
+allow = ["MIT", "Apache-2.0", "Unicode-3.0"]
+confidence-threshold = 0.8
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
