@@ -46,14 +46,24 @@ metadata read.
 | Secret | `EXECUTOR_APP_PRIVATE_KEY` |
 | Variable | `EXECUTOR_APP_CLIENT_ID` |
 
-The token is minted once per run, after the check rounds, only when the outcome is a pull request or
-a draft. It is scoped to the current repository, asks for exactly the three permissions above, and
-is used by the push step and the pull request step. The steps that run the model never receive it.
+`dev-execute.yml` runs in two jobs on two runners. The `dev-execute` job runs the gate, the rounds, the
+check and the findings comment. When the outcome is a pull request or a draft, it bundles the commits
+from the base to HEAD and uploads the bundle as an artifact. The `dev-publish` job runs only for a
+pull request or a draft. It takes that bundle and the job outputs `action`, `verdict`, `rounds`,
+`branch`, `ctype` and `plan_url`, verifies the bundle and checks that its history reaches the base
+commit of its own checkout. Only then does it mint the token, push and open the pull request.
 
-The push step does not run git in the checkout. It fetches HEAD into a fresh bare repository in the
-runner's temporary directory and pushes from there, with `core.hooksPath` set to `/dev/null` and the
-global and system git config disabled. A hook or config that the rounds wrote into the checkout's
-`.git` therefore cannot run during the push or redirect it, so the token reaches only the push URL.
+The token is minted once per run, in the `dev-publish` job, and is scoped to the current repository
+with exactly the three permissions above. It is used by the push step and the pull request step. No
+step of the `dev-execute` job receives the executor key or the token, and no step of `dev-publish`
+runs the model, the setup, the check or the test commands. Environment files that the rounds write
+stay on the rounds runner, so they never reach the push or the pull request step.
+
+The push step does not run git in the checkout. The verify step fetches the bundle into a fresh bare
+repository in the runner's temporary directory, and the push runs from there, with `core.hooksPath`
+set to `/dev/null` and the global and system git config disabled. The bundle is made the same way in
+the rounds job. A hook or config that the rounds wrote into the checkout's `.git` therefore cannot run
+during the bundle or the push, or redirect the push, so the token reaches only the push URL.
 
 ## The deletion check
 
