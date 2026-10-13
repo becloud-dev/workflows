@@ -142,6 +142,7 @@ jobs:
             The input is .planner/roadmap-input.json.
           claude_args: |
             --model ${{ inputs.model }}
+            --setting-sources user
             --allowedTools "Read"
             --json-schema '{"type":"object","properties":{"milestones":{"type":"array","items":{"type":"object","properties":{"target":{"type":["string","integer"]},"theme":{"type":"string","maxLength":120},"issues":{"type":"array","items":{"type":"object","properties":{"number":{"type":"integer"},"reason":{"type":"string"}},"required":["number","reason"]}}},"required":["target","theme","issues"]}},"held":{"type":"array","items":{"type":"object","properties":{"number":{"type":"integer"},"reason":{"type":"string"}},"required":["number","reason"]}},"unplanned":{"type":"array","items":{"type":"object","properties":{"number":{"type":"integer"},"reason":{"type":"string"}},"required":["number","reason"]}},"summary":{"type":"string"}},"required":["milestones","held","unplanned","summary"]}'
 

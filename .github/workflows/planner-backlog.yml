@@ -91,6 +91,7 @@ jobs:
             The input is .planner/backlog.json.
           claude_args: |
             --model ${{ inputs.model }}
+            --setting-sources user
             --allowedTools "Read"
             --json-schema '{"type":"object","properties":{"order":{"type":"array","items":{"type":"object","properties":{"number":{"type":"integer"},"reason":{"type":"string"}},"required":["number","reason"]}},"categorize":{"type":"array","items":{"type":"object","properties":{"number":{"type":"integer"},"current_type":{"type":"string"},"suggested_type":{"type":"string","enum":["Task","Bug","Feature"]},"evidence":{"type":"string"}},"required":["number","suggested_type","evidence"]}},"gaps":{"type":"array","items":{"type":"object","properties":{"number":{"type":"integer"},"gap":{"type":"string","enum":["no_type","stale","duplicate"]},"duplicate_of":{"type":"integer"},"evidence":{"type":"string"}},"required":["number","gap","evidence"]}},"summary":{"type":"string"}},"required":["order","categorize","gaps","summary"]}'
 

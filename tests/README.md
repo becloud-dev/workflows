@@ -14,6 +14,7 @@ upstream binary is downloaded to `tests/.cache/jq` and its SHA-256 is verified b
 
 | Suite | What it covers |
 |---|---|
+| `agent-calls` | every claude-code-action call passes `--setting-sources user`, so no call loads the checkout's project or local settings, hooks or `CLAUDE.md` (#78); the checker fails on a missing, widened or repeated flag |
 | `bootstrap` | `templates/consumer/bootstrap.sh`: arguments, reads before writes, dry run |
 | `callers` | every template caller against the inputs, secrets and permissions of its reusable workflow (no broader scope, a workflow-level block); every permissions entry in the workflows, actions and templates has a reason comment |
 | `dev-execute` | gate, publish decision and bundle, findings of `dev-execute.yml`; the job split (the token only in `dev-publish`), the bundle verify, the plan scope check of publish (it re-reads the plan and does not read the rounds), the push from the bundle, the pull request |
