@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/becloud-dev/workflows/compare/v0.2.0...v0.2.1) (2026-10-13)
+
+
+### Bug Fixes
+
+* **agent-calls:** load no project settings, hooks or CLAUDE.md from the checkout ([#80](https://github.com/becloud-dev/workflows/issues/80)) ([fee4a41](https://github.com/becloud-dev/workflows/commit/fee4a417f4e4d28b8f44d6a605892c9a23a05374)), closes [#78](https://github.com/becloud-dev/workflows/issues/78)
+
 ## [0.2.0](https://github.com/becloud-dev/workflows/compare/v0.1.0...v0.2.0) (2026-10-13)
 
 
