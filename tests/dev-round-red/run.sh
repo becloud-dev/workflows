@@ -11,6 +11,7 @@ mkrepo() { # builds origin with base commit, shallow clone, prints clone dir
   ( cd "$d/origin" && git config user.email t@t && git config user.name t \
     && mkdir bin tests && printf 'echo hi\n' > bin/greet \
     && printf 'test "$(sh bin/greet)" = hi\n' > tests/greet_test.sh \
+    && printf 'notes\n' > tests/README.md \
     && git add . && git commit -qm base )
   git clone -q --depth 1 "file://$d/origin" "$d/clone"
   ( cd "$d/clone" && git config user.email t@t && git config user.name t )
@@ -35,6 +36,10 @@ add_passing_test() { printf 'test -f bin/greet\n' > tests/exists_test.sh; git ad
 touch_code_only() { printf 'echo hello\n' > bin/greet; git add .; git commit -qm 'feat: x'; }
 delete_test() { git rm -q tests/greet_test.sh; git commit -qm 'test: drop'; }
 add_test_in_other_dir() { mkdir spec; printf 'exit 1\n' > spec/a_spec.sh; git add .; git commit -qm 'test: spec'; }
+trim_test() { : > tests/greet_test.sh; git add .; git commit -qm 'test: trim'; }
+add_failing_line_to_test() { printf 'test "$(sh bin/greet --shout)" = HI\n' >> tests/greet_test.sh; git add .; git commit -qm 'test: shout line'; }
+add_passing_line_to_test() { printf 'test -f bin/greet\n' >> tests/greet_test.sh; git add .; git commit -qm 'test: exists line'; }
+trim_readme() { : > tests/README.md; git add .; git commit -qm 'docs: trim'; }
 no_commit() { :; }
 
 T='sh tests/shout_test.sh'
@@ -47,6 +52,10 @@ run_red "test command empty"        none          ''                       'test
 run_red "deleted test is skipped"   none          'sh tests/greet_test.sh' 'tests/*' delete_test
 run_red "two globs, second matches" red           'sh spec/a_spec.sh'      'nope/*,spec/*' add_test_in_other_dir
 run_red "no commits ahead"          none          'sh tests/greet_test.sh' 'tests/*' no_commit
+run_red "deletion-only edit of a test file is skipped" none 'sh tests/greet_test.sh' 'tests/*' trim_test
+run_red "lines added to an existing test file are checked" red 'sh tests/greet_test.sh' 'tests/*' add_failing_line_to_test
+run_red "lines added to an existing test file that pass on base" green_on_base 'sh tests/greet_test.sh' 'tests/*' add_passing_line_to_test
+run_red "deletion-only edit of a README under the globs is skipped" none 'sh tests/greet_test.sh' 'tests/*' trim_readme
 BASE_OVERRIDE=deadbeefdeadbeefdeadbeefdeadbeefdeadbeef \
 run_red "bad base gives error"      error         'sh tests/shout_test.sh' 'tests/*' add_failing_test
 unset BASE_OVERRIDE
@@ -64,6 +73,7 @@ run_verdict() { # name want_verdict RED_STATE CHECK_EXIT TEST_EXIT
 }
 run_verdict "red state red passes"       pass red           0 0
 run_verdict "none passes"                pass none          0 0
+run_verdict "deletion-only change passes" pass none         0 0
 run_verdict "unset passes"               pass ""            0 0
 run_verdict "error passes"               pass error         0 0
 run_verdict "green_on_base forces fail"  fail green_on_base 0 0
