@@ -20,14 +20,12 @@ upstream binary is downloaded to `tests/.cache/jq` and its SHA-256 is verified b
 | `dev-plan-post` | "Post the plan" of `dev-plan.yml`: structure, security links, refusal comment |
 | `dev-round` | tools, commands and verdict steps of the `dev-round` composite |
 | `dev-round-red` | the red check: new tests must fail on the base tree |
-| `install-zola` | the `install-zola` composite: pinned version, checksum and version check, nothing installed on failure |
 | `record-run` | what a run record holds and how it is named |
 | `release-config` | the release-please config of the repository and the consumer template: `bump-minor-pre-major` is set, the manifest is still 0.x |
 | `release-gate` | owner label, blockers, stale or edited review; also mutates the step |
 | `release-issues` | approval gate and issue creation |
 | `release-please-tag` | moving the major tag after a release |
 | `release-review` | the command gate and the review comment |
-| `site-workflows` | `site-ci.yml` and `pr-title.yml`, the reusable site check and the pull request title check: only `workflow_call`, `permissions: {}` at both levels, pinned `uses:` (local `$/` actions excepted), checkout without persisted credentials, no expressions in `run:`, no `GITHUB_PATH`/`GITHUB_ENV`, no secrets reference; each rule shown failing on a broken copy |
 | `zizmor-audit` | the zizmor job of `ci.yml`: the audit (workflow files, actions and consumer templates are read) and the comparison of findings, the path filter, fail-closed reports |
 
 A suite named like a step is the place to add a case when that step changes: write the case, see it
