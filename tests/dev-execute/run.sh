@@ -175,6 +175,16 @@ pushrun
 pushcase; pushrun
 if grep -rqF tok123 "$W/repo"; then bad "push: token written to the checkout"; else ok "push: token stays out of checkout config and files"; fi
 
+# the executor's checkout is a depth-1 clone and the remote already holds the base history
+pushcase; ORIGIN=$C/origin; mkdir -p "$ORIGIN"
+( cd "$ORIGIN" && git init -q -b main && git -c user.email=t@t -c user.name=t commit -q --allow-empty -m one \
+  && git -c user.email=t@t -c user.name=t commit -q --allow-empty -m two )
+rm -rf "$STUB_REMOTE" "$W/repo"; git clone -q --bare "file://$ORIGIN" "$STUB_REMOTE"; git clone -q --depth 1 "file://$ORIGIN" "$W/repo"
+git -C "$W/repo" -c user.email=t@t -c user.name=t commit -q --allow-empty -m change
+[ "$(git -C "$W/repo" rev-parse --is-shallow-repository)" = true ] || bad "push: the shallow fixture is not shallow"
+pushrun
+[ "$(remote_ref "$STUB_REMOTE")" = "$(git -C "$W/repo" rev-parse HEAD)" ] && ok "push: pushes from a shallow checkout" || bad "push: shallow checkout not pushed ($(sed -n 1,3p "$C/stdout"))"
+
 prrun() { ( cd "$W/repo" && GH_TOKEN=x GITHUB_REPOSITORY=acme/app BRANCH=feat/13-x CTYPE=feat PLAN_URL=https://x/1 ISSUE=13 TITLE="Add A --Help Flag" DEFAULT_BRANCH=main ACTION="$1" VERDICT="$2" ROUNDS="$3" bash "$W/Open_the_pull_request.sh" > "$C/stdout" 2>&1 ); }
 prrun pr pass 1
 grep -q -- '--head feat/13-x --base main --title feat: add a --help flag --body-file' "$STUB_LOG" && ok "pr: head, base, lower-case conventional title" || bad "pr: $(grep 'gh pr' "$STUB_LOG")"

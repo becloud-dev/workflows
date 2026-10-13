@@ -252,7 +252,8 @@ jobs:
           clean=$(mktemp -d "$RUNNER_TEMP/push.XXXXXX")
           git init -q --bare "$clean"
           export GIT_DIR=$clean
-          git fetch -q "$PWD" "HEAD:refs/push/head"
+          # the checkout is a shallow clone; without --update-shallow the fetch refuses the ref and exits 0
+          git fetch -q --update-shallow "$PWD" "HEAD:refs/push/head"
           git -c core.hooksPath=/dev/null push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "refs/push/head:refs/heads/${BRANCH}"
 
       - name: Open the pull request
