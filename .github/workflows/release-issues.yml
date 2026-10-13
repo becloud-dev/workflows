@@ -103,6 +103,7 @@ jobs:
             Read .ai-workflows/prompts/release-issues.md and follow it.
           claude_args: |
             --model ${{ inputs.model }}
+            --setting-sources user
             --allowedTools "Read"
             --json-schema '{"type":"object","properties":{"issues":{"type":"array","maxItems":12,"items":{"type":"object","properties":{"title":{"type":"string","description":"At most 100 characters; shorten without changing the meaning"},"body":{"type":"string"},"type":{"type":"string","enum":["Bug","Task","Feature"]},"blocking":{"type":"boolean"}},"required":["title","body","type","blocking"]}}},"required":["issues"]}'
 

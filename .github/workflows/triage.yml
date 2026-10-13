@@ -81,6 +81,7 @@ jobs:
             Read .ai-workflows/prompts/triage.md and follow it.
           claude_args: |
             --model ${{ inputs.model }}
+            --setting-sources user
             --allowedTools "Bash(gh issue view:*),Bash(ls .github/ISSUE_TEMPLATE:*),Read"
             --json-schema '{"type":"object","properties":{"outcome":{"type":"string","enum":["triaged","needs_info"]},"type":{"type":"string","enum":["Task","Bug","Feature"]},"priority":{"type":"string","enum":["Urgent","High","Medium","Low"]},"rationale":{"type":"string"},"questions":{"type":"array","items":{"type":"string"},"maxItems":5},"body":{"type":"string"},"format_change":{"type":"string"},"type_evidence":{"type":"string"},"priority_evidence":{"type":"string"},"children":{"type":"array","maxItems":5,"items":{"type":"object","properties":{"title":{"type":"string"},"body":{"type":"string"},"type":{"type":"string","enum":["Task","Bug","Feature"]}},"required":["title","body","type"]}}},"required":["outcome","rationale"]}'
 

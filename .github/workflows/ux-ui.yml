@@ -84,6 +84,7 @@ jobs:
             Read .ai-workflows/prompts/ux-research.md and follow it.
           claude_args: |
             --model ${{ inputs.model }}
+            --setting-sources user
             --allowedTools "Bash(gh issue view:*),Read,Grep,Glob"
             --json-schema '{"type":"object","properties":{"outcome":{"type":"string","enum":["researched","needs_info"]},"rationale":{"type":"string"},"questions":{"type":"array","items":{"type":"string"},"maxItems":5},"user_story":{"type":"string"},"requirements":{"type":"array","items":{"type":"string"},"maxItems":8},"hierarchy":{"type":"array","maxItems":8,"items":{"type":"object","properties":{"element":{"type":"string"},"why":{"type":"string"}},"required":["element","why"]}},"screen_elements":{"type":"array","maxItems":10,"items":{"type":"object","properties":{"name":{"type":"string"},"purpose":{"type":"string"}},"required":["name","purpose"]}}},"required":["outcome","rationale"]}'
 
@@ -175,6 +176,7 @@ jobs:
             Read .ai-workflows/prompts/ui-research.md and follow it.
           claude_args: |
             --model ${{ inputs.model }}
+            --setting-sources user
             --allowedTools "Bash(gh issue view:*),Read,Grep,Glob"
             --json-schema '{"type":"object","properties":{"design_system_used":{"type":"boolean"},"design_system_note":{"type":"string"},"layout":{"type":"string"},"navigation":{"type":"string"},"components":{"type":"array","items":{"type":"object","properties":{"name":{"type":"string"},"source":{"type":"string"},"note":{"type":"string"}},"required":["name","source","note"]}},"tokens":{"type":"array","items":{"type":"object","properties":{"role":{"type":"string"},"value":{"type":"string"},"source":{"type":"string"}},"required":["role","value","source"]}},"gaps":{"type":"array","items":{"type":"string"}},"rationale":{"type":"string"}},"required":["design_system_used","design_system_note","layout","navigation","components","tokens","gaps","rationale"]}'
 

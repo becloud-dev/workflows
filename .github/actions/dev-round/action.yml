@@ -62,6 +62,7 @@ runs:
           Read .ai-workflows/prompts/dev-execute.md and follow it.
         claude_args: |
           --model ${{ inputs.execute_model }}
+          --setting-sources user
           --allowedTools "${{ steps.tools.outputs.allowed }}"
           --json-schema '{"type":"object","properties":{"outcome":{"type":"string","enum":["done","blocked"]},"summary":{"type":"string"},"red_seen":{"type":"boolean"},"commits":{"type":"array","items":{"type":"string"}},"blocked_reason":{"type":"string"}},"required":["outcome","summary"]}'
 
@@ -240,6 +241,7 @@ runs:
           Read .ai-workflows/prompts/dev-check.md and follow it.
         claude_args: |
           --model ${{ inputs.check_model }}
+          --setting-sources user
           --allowedTools "Read,Grep,Glob,Bash(git diff:*),Bash(git log:*)"
           --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["pass","fail"]},"summary":{"type":"string"},"criteria":{"type":"array","items":{"type":"object","properties":{"criterion":{"type":"integer"},"met":{"type":"boolean"}},"required":["criterion","met"]}},"findings":{"type":"array","maxItems":8,"items":{"type":"object","properties":{"criterion":{"type":"integer"},"problem":{"type":"string"}},"required":["criterion","problem"]}}},"required":["verdict","summary","criteria","findings"]}'
 
