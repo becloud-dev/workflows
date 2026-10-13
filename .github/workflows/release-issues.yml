@@ -104,7 +104,7 @@ jobs:
           claude_args: |
             --model ${{ inputs.model }}
             --allowedTools "Read"
-            --json-schema '{"type":"object","properties":{"issues":{"type":"array","maxItems":12,"items":{"type":"object","properties":{"title":{"type":"string"},"body":{"type":"string"},"type":{"type":"string","enum":["Bug","Task","Feature"]},"blocking":{"type":"boolean"}},"required":["title","body","type","blocking"]}}},"required":["issues"]}'
+            --json-schema '{"type":"object","properties":{"issues":{"type":"array","maxItems":12,"items":{"type":"object","properties":{"title":{"type":"string","description":"At most 100 characters; shorten without changing the meaning"},"body":{"type":"string"},"type":{"type":"string","enum":["Bug","Task","Feature"]},"blocking":{"type":"boolean"}},"required":["title","body","type","blocking"]}}},"required":["issues"]}'
 
       - name: Create the issues
         if: steps.gate.outputs.ok == 'true' && steps.claude.outputs.structured_output != ''
@@ -125,32 +125,51 @@ jobs:
             echo "::error::$1"
             exit 1
           }
-          jq -e '(.issues | type == "array" and length <= 12)
-                 and all(.issues[];
-                       (.title | type == "string" and length > 0 and length <= 100)
-                       and (.body | type == "string" and length > 0)
-                       and (.type | IN("Bug", "Task", "Feature"))
-                       and (.blocking | type == "boolean"))' "$f" > /dev/null \
-            || fail "the issue list is not valid."
+          jq -e '.issues | type == "array" and length <= 12' "$f" > /dev/null \
+            || fail "the issue list is not an array of at most 12 items."
           n=$(jq '.issues | length' "$f")
+          check() {
+            jq -e --argjson i "$1" ".issues[\$i] | $2" "$f" > /dev/null \
+              || fail "item $(($1 + 1)) breaks the rule: $3."
+          }
+          for i in $(seq 0 $((n - 1))); do
+            check "$i" '(.title | type == "string" and length > 0)' "the title is empty or not text"
+            check "$i" '(.body | type == "string" and length > 0)' "the body is empty or not text"
+            check "$i" '(.type | IN("Bug", "Task", "Feature"))' "the type must be Bug, Task or Feature"
+            check "$i" '(.blocking | type == "boolean")' "blocking must be true or false"
+          done
           [ "$n" -eq "$ITEMS" ] || fail "the review has $ITEMS item(s) and $n issue(s) were returned."
-          [ "$(jq '[.issues[].title] | unique | length' "$f")" -eq "$n" ] \
-            || fail "two issues have the same title."
+          # A title over 100 characters is cut at its last word boundary within 99 characters and marked
+          # with an ellipsis; the body keeps the full title first. Titles are only ever handled by jq.
+          s="$RUNNER_TEMP/issues-short.json"
+          jq '.issues |= map(
+                if (.title | length) > 100 then
+                  (.title[0:99] | sub(" [^ ]*$"; "") | sub(" +$"; "")) as $cut
+                  | .body = "Full title: \(.title)\n\n\(.body)"
+                  | .full = .title
+                  | .title = ((if $cut == "" then .title[0:99] else $cut end) + "…")
+                else . end)' "$f" > "$s"
+          dup=$(jq -r '[.issues | to_entries | group_by(.value.title)[] | select(length > 1)
+            | "items \(map((.key + 1) | tostring) | join(" and ")) have the same title: \(.[0].value.title)"]
+            | first // empty' "$s")
+          [ -z "$dup" ] || fail "$dup."
           existing=$(gh issue list --repo "$GITHUB_REPOSITORY" --state all --limit 300 --json number,body)
           ok=1
           : > "$RUNNER_TEMP/blocking.txt"
           : > "$RUNNER_TEMP/deferred.txt"
+          : > "$RUNNER_TEMP/shortened.txt"
           for i in $(seq 0 $((n - 1))); do
-            title=$(jq -er ".issues[$i].title" "$f")
-            type=$(jq -er ".issues[$i].type" "$f")
-            blocking=$(jq -r ".issues[$i].blocking" "$f")
+            title=$(jq -er ".issues[$i].title" "$s")
+            type=$(jq -er ".issues[$i].type" "$s")
+            blocking=$(jq -r ".issues[$i].blocking" "$s")
+            full=$(jq -r ".issues[$i].full // empty" "$s")
             hash=$(printf '%s' "$title" | sha256sum | cut -c1-16)
             marker="<!-- release-review-finding:$PR:$hash -->"
             number=$(jq -r --arg m "$marker" \
               'map(select((.body // "") | contains($m))) | .[0].number // empty' <<< "$existing")
             if [ -z "$number" ]; then
               {
-                jq -er ".issues[$i].body" "$f"
+                jq -er ".issues[$i].body" "$s"
                 printf '\nFound in the release review of #%s: %s\n\n%s\n' "$PR" "$REVIEW_URL" "$marker"
               } > "$RUNNER_TEMP/issue.md"
               args=(--repo "$GITHUB_REPOSITORY" --title "$title" --body-file "$RUNNER_TEMP/issue.md")
@@ -160,6 +179,7 @@ jobs:
             elif [ "$blocking" = true ]; then
               gh issue edit "$number" --repo "$GITHUB_REPOSITORY" --add-label release-blocker || ok=0
             fi
+            if [ -n "$full" ]; then echo "- item $((i + 1)) as #$number: $title" >> "$RUNNER_TEMP/shortened.txt"; fi
             gh api -X PATCH "$api/$number" -f type="$type" --silent || ok=0
             got_type=$(gh api "$api/$number" --jq '.type.name // ""') || got_type=""
             [ "$got_type" = "$type" ] || ok=0
@@ -194,6 +214,11 @@ jobs:
                 echo
                 echo '**Deferred.** Add `triage` to each.'
                 cat "$RUNNER_TEMP/deferred.txt"
+              fi
+              if [ -s "$RUNNER_TEMP/shortened.txt" ]; then
+                echo
+                echo 'Titles shortened to 100 characters; the full title is at the start of the issue body:'
+                cat "$RUNNER_TEMP/shortened.txt"
               fi
             fi
             echo

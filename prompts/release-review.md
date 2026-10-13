@@ -65,7 +65,7 @@ Rules:
 Return:
 
 - `summary`: one to three sentences: what the release changes, and whether anything blocks it.
-- `findings`: 0 to 12 objects, blocking ones first, each with `title` (one line, a statement of
+- `findings`: 0 to 12 objects, blocking ones first, each with `title` (one line of at most 100 characters, a statement of
   the defect, no prefix), `location` (`file:line`), `body` (what fails, how, and for a blocking
   one why it blocks the release; 1 to 4 sentences), `blocking` (boolean) and `type` (`Bug` for a
   defect, `Task` for a missing test or a rule, `Feature` only when something expected is absent).
