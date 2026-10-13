@@ -1,6 +1,5 @@
-//! The backlog planner (review of #74). The CLI builds the input from the open issues with their
-//! relations; an order call ranks the issues and a duplicate call finds duplicates; the CLI
-//! enforces the rules on both outputs and renders the report.
+//! The backlog planner's input: the open issues with their relations, split into the ranked set,
+//! the parents with open sub-issues (rule a) and the unprioritised issues.
 
 use crate::github::Gh;
 use anyhow::{Result, bail};
