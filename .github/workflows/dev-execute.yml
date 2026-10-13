@@ -247,7 +247,13 @@ jobs:
           BRANCH: ${{ steps.gate.outputs.branch }}
         run: |
           set -euo pipefail
-          git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:refs/heads/${BRANCH}"
+          # push from a fresh git dir, so the hooks and config the rounds left in the checkout's .git are not read
+          export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
+          clean=$(mktemp -d "$RUNNER_TEMP/push.XXXXXX")
+          git init -q --bare "$clean"
+          export GIT_DIR=$clean
+          git fetch -q "$PWD" "HEAD:refs/push/head"
+          git -c core.hooksPath=/dev/null push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "refs/push/head:refs/heads/${BRANCH}"
 
       - name: Open the pull request
         if: steps.final.outputs.action == 'pr' || steps.final.outputs.action == 'draft'
@@ -271,7 +277,7 @@ jobs:
             echo
             echo "Check verdict: $VERDICT after $ROUNDS round(s)."
           } > "$RUNNER_TEMP/pr-body.md"
-          args=(--head "$BRANCH" --base "$DEFAULT_BRANCH" --title "$CTYPE: ${TITLE,,}" --body-file "$RUNNER_TEMP/pr-body.md")
+          args=(--head "$BRANCH" --base "$DEFAULT_BRANCH" --title "$CTYPE: ${TITLE,,}" --body-file "$RUNNER_TEMP/pr-body.md" --repo "$GITHUB_REPOSITORY")
           if [ "$ACTION" = draft ]; then args+=(--draft); fi
           gh pr create "${args[@]}"
 
