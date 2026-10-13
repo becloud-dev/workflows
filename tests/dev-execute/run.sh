@@ -45,7 +45,8 @@ python3 -I - "$ROOT/.github/workflows/dev-execute.yml" "$W" <<'PY'
 import sys, yaml
 d = yaml.safe_load(open(sys.argv[1]))
 n = 0
-for s in d["jobs"]["dev-execute"]["steps"]:
+for j in d["jobs"].values():
+  for s in j["steps"]:
     if "run" in s:
         assert "${{" not in s["run"], f"expression left in run block: {s.get('id') or s.get('name')}"
         open(f"{sys.argv[2]}/{(s.get('id') or s['name']).replace(' ', '_')}.sh", "w").write(s["run"]); n += 1
@@ -145,45 +146,74 @@ newcase; mkrepo; FBASE=$(git -C "$W/repo" rev-parse HEAD)
 R1O=done R1V=pass R1F=/r1; final
 [ "$(out action)" = comment ] && [ "$(out ahead)" = 0 ] && ok "final: pass with no commits gives comment" || bad "final: no commits ($(out action))"
 
-echo "# push, pull request, findings"
+echo "# bundle, publish verify and push"
 # the push goes to a local bare remote in place of the GitHub URL, so the real git runs the hooks and config it reads
 pushcase() { newcase; mkrepo; export STUB_REMOTE=$C/remote.git; git init -q --bare "$STUB_REMOTE"; }
-pushrun() { ( cd "$W/repo" && GH_TOKEN=tok123 BRANCH=feat/13-x GITHUB_REPOSITORY=acme/app bash "$W/Push_the_branch.sh" > "$C/stdout" 2>&1 ); }
 remote_ref() { git --git-dir="$1" rev-parse -q --verify refs/heads/feat/13-x || true; }
-pushcase; pushrun
-grep -qF 'git -c core.hooksPath=/dev/null push https://x-access-token:tok123@github.com/acme/app.git refs/push/head:refs/heads/feat/13-x' "$STUB_LOG" && ok "push: token URL and refspec" || bad "push: $(cat "$STUB_LOG")"
-[ "$(remote_ref "$STUB_REMOTE")" = "$(git -C "$W/repo" rev-parse HEAD)" ] && ok "push: pushes the checkout's HEAD commit" || bad "push: HEAD not pushed ($(remote_ref "$STUB_REMOTE"))"
-grep -qF "GIT_DIR=$RUNNER_TEMP/push." "$STUB_LOG" && grep -qF 'GIT_CONFIG_GLOBAL=/dev/null' "$STUB_LOG" && ok "push: disables hooks and global config, from a clean git dir" || bad "push: clean dir $(cat "$STUB_LOG")"
+# the rounds side bundles the commit the Decide step found; the publish side then checks out the base, as its own checkout does
+bundled() {
+  pushcase; FBASE=$(git -C "$W/repo" rev-parse HEAD); commit; R1O=done R1V=pass R1F=/r1; final
+  mkdir -p "$C/tmp/publish-bundle"; mv "$C/tmp/bundle/publish.bundle" "$C/tmp/publish-bundle/"
+  NEWHEAD=$(git -C "$W/repo" rev-parse HEAD); git -C "$W/repo" checkout -q --detach "$FBASE"
+}
+verifyrun() { ( cd "$W/repo" && BUNDLE="$C/tmp/publish-bundle/publish.bundle" GITHUB_REPOSITORY=acme/app bash "$W/Verify_the_bundle.sh" > "$C/stdout" 2>&1 ); }
+pushrun() { ( cd "$W/repo" && GH_TOKEN=tok123 BRANCH=feat/13-x GITHUB_REPOSITORY=acme/app bash "$W/Push_the_branch.sh" > "$C/stdout" 2>&1 ); }
+publish() { verifyrun && pushrun; }
 
-pushcase; printf '#!/bin/sh\necho ran >> "%s"\n' "$C/marker" > "$W/repo/.git/hooks/pre-push"; chmod +x "$W/repo/.git/hooks/pre-push"
-pushrun
-[ ! -e "$C/marker" ] && [ -n "$(remote_ref "$STUB_REMOTE")" ] && ok "push: ignores a planted pre-push hook" || bad "push: ran a planted pre-push hook"
+pushcase; FBASE=$(git -C "$W/repo" rev-parse HEAD); commit
+printf '#!/bin/sh\necho ran >> "%s"\n' "$C/marker" > "$W/repo/.git/hooks/pre-push"; chmod +x "$W/repo/.git/hooks/pre-push"
+git -C "$W/repo" config uploadpack.packObjectsHook "touch $C/upload-marker"
+R1O=done R1V=pass R1F=/r1; final
+B=$C/tmp/bundle/publish.bundle
+[ -s "$B" ] && git -C "$W/repo" bundle verify "$B" > /dev/null 2>&1 && git bundle list-heads "$B" | grep -qF "$(git -C "$W/repo" rev-parse HEAD) refs/push/head" && [ ! -e "$C/marker" ] && [ ! -e "$C/upload-marker" ] \
+  && ok "bundle: holds the commit on the base, and no planted hook or config runs" || bad "bundle: $(cat "$C/stdout")"
 
-pushcase; mkdir -p "$C/evilhooks"; printf '#!/bin/sh\necho ran >> "%s"\n' "$C/marker" > "$C/evilhooks/pre-push"; chmod +x "$C/evilhooks/pre-push"
+bundled; publish
+[ "$(remote_ref "$STUB_REMOTE")" = "$NEWHEAD" ] && ok "publish: verifies the bundle and pushes its HEAD under the branch name" || bad "publish: HEAD not pushed ($(remote_ref "$STUB_REMOTE")) $(cat "$C/stdout")"
+grep -qF 'git -c core.hooksPath=/dev/null push https://x-access-token:tok123@github.com/acme/app.git refs/push/head:refs/heads/feat/13-x' "$STUB_LOG" && grep -qF "GIT_DIR=$C/tmp/publish.git GIT_CONFIG_GLOBAL=/dev/null" "$STUB_LOG" && ok "publish: token URL and refspec, from the fresh git dir" || bad "publish: push call $(cat "$STUB_LOG")"
+
+bundled; printf '#!/bin/sh\necho ran >> "%s"\n' "$C/marker" > "$W/repo/.git/hooks/pre-push"; chmod +x "$W/repo/.git/hooks/pre-push"
+publish
+[ ! -e "$C/marker" ] && [ "$(remote_ref "$STUB_REMOTE")" = "$NEWHEAD" ] && ok "publish: ignores a planted pre-push hook" || bad "publish: ran a planted pre-push hook"
+
+bundled; mkdir -p "$C/evilhooks"; printf '#!/bin/sh\necho ran >> "%s"\n' "$C/marker" > "$C/evilhooks/pre-push"; chmod +x "$C/evilhooks/pre-push"
 git -C "$W/repo" config core.hooksPath "$C/evilhooks"
-pushrun
-[ ! -e "$C/marker" ] && [ -n "$(remote_ref "$STUB_REMOTE")" ] && ok "push: ignores planted core.hooksPath" || bad "push: ran a hook from a planted core.hooksPath"
+publish
+[ ! -e "$C/marker" ] && [ "$(remote_ref "$STUB_REMOTE")" = "$NEWHEAD" ] && ok "publish: ignores planted core.hooksPath" || bad "publish: ran a hook from a planted core.hooksPath"
 
-pushcase; EVIL=$C/evil.git; git init -q --bare "$EVIL"; git -C "$W/repo" config "url.$EVIL.insteadOf" "$STUB_REMOTE"
-pushrun
-[ -n "$(remote_ref "$STUB_REMOTE")" ] && [ -z "$(remote_ref "$EVIL")" ] && ok "push: ignores a planted url.insteadOf" || bad "push: redirected to $EVIL"
+bundled; EVIL=$C/evil.git; git init -q --bare "$EVIL"; git -C "$W/repo" config "url.$EVIL.insteadOf" "$STUB_REMOTE"
+publish
+[ "$(remote_ref "$STUB_REMOTE")" = "$NEWHEAD" ] && [ -z "$(remote_ref "$EVIL")" ] && ok "publish: ignores a planted url.insteadOf" || bad "publish: redirected to $EVIL"
 
-pushcase; git -C "$W/repo" config uploadpack.packObjectsHook "touch $C/upload-marker"
-pushrun
-[ ! -e "$C/upload-marker" ] && ok "push: the fetch ignores a planted uploadpack hook" || bad "push: the fetch ran a planted uploadpack hook"
+bundled; git -C "$W/repo" config uploadpack.packObjectsHook "touch $C/upload-marker"
+publish
+[ ! -e "$C/upload-marker" ] && [ "$(remote_ref "$STUB_REMOTE")" = "$NEWHEAD" ] && ok "publish: the fetch of the bundle ignores a planted uploadpack hook" || bad "publish: the fetch ran a planted uploadpack hook"
 
-pushcase; pushrun
-if grep -rqF tok123 "$W/repo"; then bad "push: token written to the checkout"; else ok "push: token stays out of checkout config and files"; fi
+bundled; publish
+if grep -rqF tok123 "$W/repo"; then bad "publish: token written to the checkout"; else ok "publish: token stays out of checkout config and files"; fi
+
+bundled; printf 'not a bundle\n' > "$C/tmp/publish-bundle/publish.bundle"
+if publish; then bad "publish: a corrupt bundle was accepted"; else [ -f "$W/Verify_the_bundle.sh" ] && [ -z "$(remote_ref "$STUB_REMOTE")" ] && ok "publish: a corrupt bundle is refused and nothing is pushed" || bad "publish: corrupt bundle pushed"; fi
+
+bundled; U=$C/unrelated; git init -q -b main "$U"; git -C "$U" -c user.email=t@t -c user.name=t commit -q --allow-empty -m other
+git -C "$U" bundle create "$C/tmp/publish-bundle/publish.bundle" HEAD > /dev/null 2>&1
+if publish; then bad "publish: a bundle off the base was accepted"; else [ -f "$W/Verify_the_bundle.sh" ] && [ -z "$(remote_ref "$STUB_REMOTE")" ] && ok "publish: a bundle that does not extend the base is refused and nothing is pushed" || bad "publish: unrelated bundle pushed"; fi
 
 # the executor's checkout is a depth-1 clone and the remote already holds the base history
 pushcase; ORIGIN=$C/origin; mkdir -p "$ORIGIN"
 ( cd "$ORIGIN" && git init -q -b main && git -c user.email=t@t -c user.name=t commit -q --allow-empty -m one \
   && git -c user.email=t@t -c user.name=t commit -q --allow-empty -m two )
 rm -rf "$STUB_REMOTE" "$W/repo"; git clone -q --bare "file://$ORIGIN" "$STUB_REMOTE"; git clone -q --depth 1 "file://$ORIGIN" "$W/repo"
+[ "$(git -C "$W/repo" rev-parse --is-shallow-repository)" = true ] || bad "publish: the shallow fixture is not shallow"
+FBASE=$(git -C "$W/repo" rev-parse HEAD)
 git -C "$W/repo" -c user.email=t@t -c user.name=t commit -q --allow-empty -m change
-[ "$(git -C "$W/repo" rev-parse --is-shallow-repository)" = true ] || bad "push: the shallow fixture is not shallow"
-pushrun
-[ "$(remote_ref "$STUB_REMOTE")" = "$(git -C "$W/repo" rev-parse HEAD)" ] && ok "push: pushes from a shallow checkout" || bad "push: shallow checkout not pushed ($(sed -n 1,3p "$C/stdout"))"
+R1O=done R1V=pass R1F=/r1; final
+mkdir -p "$C/tmp/publish-bundle"; mv "$C/tmp/bundle/publish.bundle" "$C/tmp/publish-bundle/"
+NEWHEAD=$(git -C "$W/repo" rev-parse HEAD); git -C "$W/repo" checkout -q --detach "$FBASE"
+publish
+[ "$(remote_ref "$STUB_REMOTE")" = "$NEWHEAD" ] && ok "publish: pushes from a shallow checkout" || bad "publish: shallow checkout not pushed ($(sed -n 1,3p "$C/stdout"))"
+
+echo "# pull request, findings"
 
 prrun() { ( cd "$W/repo" && GH_TOKEN=x GITHUB_REPOSITORY=acme/app BRANCH=feat/13-x CTYPE=feat PLAN_URL=https://x/1 ISSUE=13 TITLE="Add A --Help Flag" DEFAULT_BRANCH=main ACTION="$1" VERDICT="$2" ROUNDS="$3" bash "$W/Open_the_pull_request.sh" > "$C/stdout" 2>&1 ); }
 prrun pr pass 1
@@ -204,35 +234,60 @@ grep -q 'No pull request was opened (last outcome: blocked, 1 round(s), 0 commit
 
 echo "# executor App token"
 python3 -I - "$ROOT/.github/workflows/dev-execute.yml" "$ROOT/.github/workflows/release-please.yml" > "$W/app.out" <<'PY'
-import sys, json, yaml
+import sys, json, re, yaml
 d = yaml.safe_load(open(sys.argv[1]))
 rp = yaml.safe_load(open(sys.argv[2]))
 wc = (d.get("on") or d.get(True))["workflow_call"]
-job = d["jobs"]["dev-execute"]
-steps = job["steps"]
+jobs = d["jobs"]
+rj = jobs["dev-execute"]                      # the rounds job
+pj = jobs.get("dev-publish", {"steps": []})   # the publish job
+rs, ps = rj["steps"], pj["steps"]
 def emit(ok, name): print(("ok|" if ok else "bad|") + name)
-is_mint = lambda s: str(s.get("uses", "")).startswith("actions/create-github-app-token@")
-mints = [s for s in steps if is_mint(s)]
-emit(len(mints) == 1, "app: exactly one App token step in the job")
-perms = job.get("permissions", {})
-emit(perms.get("contents") != "write" and perms.get("pull-requests") != "write",
-     "app: job permissions hold no contents or pull-requests write")
-if len(mints) != 1:
-    for n in ("push and PR take GH_TOKEN from the App token step",
-              "token scope is contents, pull-requests and workflows write only",
-              "only the push and PR steps reference the token",
-              "minted after the rounds, only for a pr or draft action",
-              "same pinned action as release-please"):
-        emit(False, "app: " + n)
-    emit("executor_app_private_key" in wc.get("secrets", {})
-         and wc["secrets"]["executor_app_private_key"].get("required") is True
-         and wc.get("inputs", {}).get("executor_app_client_id", {}).get("required") is True,
-         "app: workflow_call requires the executor App key and client id")
-    sys.exit(0)
-mint = mints[0]
+uses = lambda s: str(s.get("uses", ""))
+is_mint = lambda s: uses(s).startswith("actions/create-github-app-token@")
+is_round = lambda s: uses(s).startswith("$/.github/actions/dev-round")
+is_claude = lambda s: "claude-code-action" in uses(s)
+mints = [s for s in ps if is_mint(s)]
+mint = mints[0] if len(mints) == 1 else {}
 ref = f"steps.{mint.get('id', '')}.outputs.token"
-by_name = {s.get("name"): s for s in steps}
+names = [s.get("name") for s in ps]
+pos = lambda n: names.index(n) if n in names else -1
+by_name = {s.get("name"): s for s in ps}
 push_pr = ["Push the branch", "Open the pull request"]
+outs = set(rj.get("outputs", {}))
+others = {n: j for n, j in jobs.items() if n != "dev-publish"}
+pcond = str(pj.get("if", ""))
+uploads = [s for s in rs if uses(s).startswith("actions/upload-artifact@") and "publish-bundle" in str(s.get("with", {}).get("name", ""))]
+downloads = [s for s in ps if uses(s).startswith("actions/download-artifact@")]
+runs = [s.get("run", "") for s in ps]
+refs = set(re.findall(r"needs\.dev-execute\.outputs\.(\w+)", json.dumps(ps)))
+
+# job separation: the token is minted and used only by the publish job, which runs no round code
+emit(len(mints) == 1 and not any(is_mint(s) for n in others.values() for s in n["steps"]),
+     "app: the App token is minted once, in the publish job")
+emit(not any(is_round(s) or is_claude(s) for s in ps)
+     and not re.search(r"inputs\.(setup|check|test)_command|claude_code_oauth_token", json.dumps(ps)),
+     "split: the publish job runs no round, model, setup, check or test step")
+emit("executor_app_private_key" not in json.dumps(others),
+     "split: the rounds job has no executor key and no App token step")
+emit(rj.get("permissions") == {"contents": "read", "issues": "write"},
+     "split: the rounds job holds contents read and issues write only")
+emit(pj.get("needs") == "dev-execute" and "needs.dev-execute.outputs.action == 'pr'" in pcond
+     and "needs.dev-execute.outputs.action == 'draft'" in pcond,
+     "publish: needs the rounds job and runs only for a pr or draft action")
+emit(pj.get("permissions") == {"contents": "read"}, "publish: contents read only")
+emit(outs == {"action", "verdict", "rounds", "branch", "ctype", "plan_url"},
+     "publish: the rounds job hands over only the scalar outputs")
+emit(len(uploads) == 1 and len(downloads) == 1 and downloads[0].get("with", {}).get("name") == uploads[0]["with"]["name"],
+     "publish: downloads only the bundle the rounds job uploads")
+emit(refs <= outs and not re.search(r"needs\.(?!dev-execute\.outputs\.)", json.dumps(ps)),
+     "publish: reads only the declared outputs of the rounds job")
+emit(not any(re.search(r"\b(source|eval)\b|BASH_ENV|GITHUB_ENV|GITHUB_PATH", r) for r in runs),
+     "publish: no step sources, evaluates or reads an environment file")
+emit(0 <= pos("Verify the bundle") < pos("Mint the executor App token"),
+     "publish: verifies the bundle before minting the token")
+
+# the token: scope, use and pinning
 emit(bool(mint.get("id")) and all(
     ref in str((by_name.get(n) or {}).get("env", {}).get("GH_TOKEN", "")) for n in push_pr),
     "app: push and PR take GH_TOKEN from the App token step")
@@ -241,15 +296,13 @@ scoped = {k: v for k, v in w.items() if k.startswith("permission-")}
 emit(scoped == {"permission-contents": "write", "permission-pull-requests": "write",
                 "permission-workflows": "write"},
      "app: token scope is contents, pull-requests and workflows write only")
-users = sorted(s.get("name") for s in steps if s is not mint and ref in json.dumps(s))
+users = sorted(s.get("name") for s in ps if s is not mint and ref in json.dumps(s))
 emit(users == sorted(push_pr), "app: only the push and PR steps reference the token")
-cond = str(mint.get("if", ""))
-names = [s.get("id") for s in steps]
-emit("steps.final.outputs.action == 'pr'" in cond and "steps.final.outputs.action == 'draft'" in cond
-     and "final" in names and steps.index(mint) > names.index("final"),
-     "app: minted after the rounds, only for a pr or draft action")
 rp_pins = {s["uses"] for j in rp["jobs"].values() for s in j["steps"] if is_mint(s)}
-emit(mint["uses"] in rp_pins, "app: same pinned action as release-please")
+emit(mint.get("uses") in rp_pins, "app: same pinned action as release-please")
+emit(all(re.fullmatch(r"[^@]+@[0-9a-f]{40}", u) for u in
+         [uses(s) for s in rs + ps if uses(s) and not uses(s).startswith(("$/", "./"))]),
+     "pins: every action in the two jobs is pinned to a full commit SHA")
 emit("executor_app_private_key" in wc.get("secrets", {})
      and wc["secrets"]["executor_app_private_key"].get("required") is True
      and wc.get("inputs", {}).get("executor_app_client_id", {}).get("required") is True,
