@@ -2166,6 +2166,8 @@ the composite, one sentence each in `dev-execute.md` and `dev-check.md`); `triag
 `green_on_base` and forces `fail` in `verdict`; non-zero is `red`; no test file in the diff, no
 `test_paths` or no test command is `none`; a failed `git diff` or worktree is `error`. `none` and
 `error` leave the verdict as it is; the checker reads the `red check` section as evidence.
+Follow-up (issue 40, 2026-10-13): a test file with no added lines (only deletions) is skipped, so
+a removal-only change gets `none`; the diff is read with `--numstat`.
 
 Fixtures (jq 1.7.1, SHA-256 `5942c9b0...`; real git on a shallow clone): 9 `red` cases and 10
 `verdict` cases pass, 8 mutations caught; the composite suite (32) and the `dev-execute` suite

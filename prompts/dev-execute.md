@@ -41,6 +41,9 @@ Rules:
   given, with no `;`, `&&`, pipe or `cd`; the exit status is in the tool result.
 - If a step cannot be done as written (a file or tool the plan assumes does not exist, a
   criterion that cannot be tested here), stop and report it as `blocked`; do not guess.
+- When the plan's changes are already committed on the branch (an earlier round made them) and
+  check and test pass, report `done` with a summary saying so; `blocked` stays for steps that
+  cannot be done.
 
 Return:
 

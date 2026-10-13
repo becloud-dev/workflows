@@ -102,7 +102,8 @@ runs:
         echo "results_file=$out" >> "$GITHUB_OUTPUT"
 
     # the new tests must fail on the base tree: run the test command there with the test files
-    # of this change and record the exit code; a pass on the base forces fail in the verdict step
+    # of this change that have added lines (a file that only lost lines is skipped) and record the
+    # exit code; a pass on the base forces fail in the verdict step
     - id: red
       if: steps.commands.outcome == 'success'
       shell: bash
@@ -116,10 +117,12 @@ runs:
         set -uo pipefail
         state=none code="" files=()
         if [ -n "$TEST" ] && [ -n "$TEST_PATHS" ]; then
-          if changed=$(git diff --name-only --diff-filter=AMR "$BASE...HEAD" 2> /dev/null); then
+          # numstat lines: added, deleted, path; binary files show "-" and are kept
+          if changed=$(git diff --numstat --no-renames --diff-filter=AMR "$BASE...HEAD" 2> /dev/null); then
             IFS=, read -ra globs <<< "$TEST_PATHS"
-            while IFS= read -r f; do
+            while IFS=$'\t' read -r added removed f; do
               [ -n "$f" ] || continue
+              [ "$added" = - ] || [ "$added" -gt 0 ] || continue
               for g in "${globs[@]}"; do
                 case "$f" in $g) files+=("$f"); break ;; esac
               done
@@ -145,7 +148,7 @@ runs:
               "$state" "${files[*]}" "${code:-n/a}" "$(tail -n 30 "$log" | tail -c 2000)"
           } >> "$RESULTS"
         else
-          printf '### red check\nstate: %s (no test file in the diff, not configured, or the diff failed)\n\n' "$state" >> "$RESULTS"
+          printf '### red check\nstate: %s (no test file with added lines in the diff, not configured, or the diff failed)\n\n' "$state" >> "$RESULTS"
         fi
         echo "red_state=$state" >> "$GITHUB_OUTPUT"
 
