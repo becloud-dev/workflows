@@ -50,6 +50,11 @@ The token is minted once per run, after the check rounds, only when the outcome 
 a draft. It is scoped to the current repository, asks for exactly the three permissions above, and
 is used by the push step and the pull request step. The steps that run the model never receive it.
 
+The push step does not run git in the checkout. It fetches HEAD into a fresh bare repository in the
+runner's temporary directory and pushes from there, with `core.hooksPath` set to `/dev/null` and the
+global and system git config disabled. A hook or config that the rounds wrote into the checkout's
+`.git` therefore cannot run during the push or redirect it, so the token reaches only the push URL.
+
 ## The deletion check
 
 The `scope` step of the `dev-round` action lists the files the executor deleted between the base and

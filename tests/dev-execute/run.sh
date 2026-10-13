@@ -29,7 +29,13 @@ esac
 STUB
 cat > "$W/bin/git" <<STUB
 #!/usr/bin/env bash
-if [ "\$1" = push ]; then echo "git \$*" >> "\$STUB_LOG"; exit 0; fi
+case " \$* " in
+  *" push "*)
+    echo "git \$* GIT_DIR=\${GIT_DIR:-} GIT_CONFIG_GLOBAL=\${GIT_CONFIG_GLOBAL:-}" >> "\$STUB_LOG"
+    args=()
+    for a in "\$@"; do case "\$a" in https://x-access-token:*@github.com/*) a=\$STUB_REMOTE;; esac; args+=("\$a"); done
+    exec "$REAL_GIT" "\${args[@]}" ;;
+esac
 exec "$REAL_GIT" "\$@"
 STUB
 chmod +x "$W/bin/"*
@@ -140,12 +146,39 @@ R1O=done R1V=pass R1F=/r1; final
 [ "$(out action)" = comment ] && [ "$(out ahead)" = 0 ] && ok "final: pass with no commits gives comment" || bad "final: no commits ($(out action))"
 
 echo "# push, pull request, findings"
-newcase; mkrepo
-( cd "$W/repo" && GH_TOKEN=tok123 BRANCH=feat/13-x GITHUB_REPOSITORY=acme/app bash "$W/Push_the_branch.sh" > "$C/stdout" 2>&1 )
-grep -q 'git push https://x-access-token:tok123@github.com/acme/app.git HEAD:refs/heads/feat/13-x' "$STUB_LOG" && ok "push: token URL and refspec" || bad "push: $(cat "$STUB_LOG")"
-prrun() { ( cd "$W/repo" && GH_TOKEN=x BRANCH=feat/13-x CTYPE=feat PLAN_URL=https://x/1 ISSUE=13 TITLE="Add A --Help Flag" DEFAULT_BRANCH=main ACTION="$1" VERDICT="$2" ROUNDS="$3" bash "$W/Open_the_pull_request.sh" > "$C/stdout" 2>&1 ); }
+# the push goes to a local bare remote in place of the GitHub URL, so the real git runs the hooks and config it reads
+pushcase() { newcase; mkrepo; export STUB_REMOTE=$C/remote.git; git init -q --bare "$STUB_REMOTE"; }
+pushrun() { ( cd "$W/repo" && GH_TOKEN=tok123 BRANCH=feat/13-x GITHUB_REPOSITORY=acme/app bash "$W/Push_the_branch.sh" > "$C/stdout" 2>&1 ); }
+remote_ref() { git --git-dir="$1" rev-parse -q --verify refs/heads/feat/13-x || true; }
+pushcase; pushrun
+grep -qF 'git -c core.hooksPath=/dev/null push https://x-access-token:tok123@github.com/acme/app.git refs/push/head:refs/heads/feat/13-x' "$STUB_LOG" && ok "push: token URL and refspec" || bad "push: $(cat "$STUB_LOG")"
+[ "$(remote_ref "$STUB_REMOTE")" = "$(git -C "$W/repo" rev-parse HEAD)" ] && ok "push: pushes the checkout's HEAD commit" || bad "push: HEAD not pushed ($(remote_ref "$STUB_REMOTE"))"
+grep -qF "GIT_DIR=$RUNNER_TEMP/push." "$STUB_LOG" && grep -qF 'GIT_CONFIG_GLOBAL=/dev/null' "$STUB_LOG" && ok "push: disables hooks and global config, from a clean git dir" || bad "push: clean dir $(cat "$STUB_LOG")"
+
+pushcase; printf '#!/bin/sh\necho ran >> "%s"\n' "$C/marker" > "$W/repo/.git/hooks/pre-push"; chmod +x "$W/repo/.git/hooks/pre-push"
+pushrun
+[ ! -e "$C/marker" ] && [ -n "$(remote_ref "$STUB_REMOTE")" ] && ok "push: ignores a planted pre-push hook" || bad "push: ran a planted pre-push hook"
+
+pushcase; mkdir -p "$C/evilhooks"; printf '#!/bin/sh\necho ran >> "%s"\n' "$C/marker" > "$C/evilhooks/pre-push"; chmod +x "$C/evilhooks/pre-push"
+git -C "$W/repo" config core.hooksPath "$C/evilhooks"
+pushrun
+[ ! -e "$C/marker" ] && [ -n "$(remote_ref "$STUB_REMOTE")" ] && ok "push: ignores planted core.hooksPath" || bad "push: ran a hook from a planted core.hooksPath"
+
+pushcase; EVIL=$C/evil.git; git init -q --bare "$EVIL"; git -C "$W/repo" config "url.$EVIL.insteadOf" "$STUB_REMOTE"
+pushrun
+[ -n "$(remote_ref "$STUB_REMOTE")" ] && [ -z "$(remote_ref "$EVIL")" ] && ok "push: ignores a planted url.insteadOf" || bad "push: redirected to $EVIL"
+
+pushcase; git -C "$W/repo" config uploadpack.packObjectsHook "touch $C/upload-marker"
+pushrun
+[ ! -e "$C/upload-marker" ] && ok "push: the fetch ignores a planted uploadpack hook" || bad "push: the fetch ran a planted uploadpack hook"
+
+pushcase; pushrun
+if grep -rqF tok123 "$W/repo"; then bad "push: token written to the checkout"; else ok "push: token stays out of checkout config and files"; fi
+
+prrun() { ( cd "$W/repo" && GH_TOKEN=x GITHUB_REPOSITORY=acme/app BRANCH=feat/13-x CTYPE=feat PLAN_URL=https://x/1 ISSUE=13 TITLE="Add A --Help Flag" DEFAULT_BRANCH=main ACTION="$1" VERDICT="$2" ROUNDS="$3" bash "$W/Open_the_pull_request.sh" > "$C/stdout" 2>&1 ); }
 prrun pr pass 1
 grep -q -- '--head feat/13-x --base main --title feat: add a --help flag --body-file' "$STUB_LOG" && ok "pr: head, base, lower-case conventional title" || bad "pr: $(grep 'gh pr' "$STUB_LOG")"
+grep -q -- '--repo acme/app' "$STUB_LOG" && ok "pr: names the repository" || bad "pr: no --repo"
 grep -q -- '--draft' "$STUB_LOG" && bad "pr: draft flag on a pass" || ok "pr: no draft flag on a pass"
 grep -q '^Closes #13$' "$STUB_LOG" && grep -q 'Plan: https://x/1' "$STUB_LOG" && grep -q 'Check verdict: pass after 1 round' "$STUB_LOG" && ok "pr: body has Closes, plan, verdict" || bad "pr: body"
 newcase; mkrepo; prrun draft fail 3
