@@ -124,7 +124,7 @@ jobs:
           claude_args: |
             --model ${{ inputs.model }}
             --allowedTools "Read,Grep,Glob,Bash(git diff:*),Bash(git log:*)"
-            --json-schema '{"type":"object","properties":{"summary":{"type":"string"},"findings":{"type":"array","maxItems":12,"items":{"type":"object","properties":{"title":{"type":"string"},"location":{"type":"string"},"body":{"type":"string"},"blocking":{"type":"boolean"},"type":{"type":"string","enum":["Bug","Task","Feature"]}},"required":["title","location","body","blocking","type"]}}},"required":["summary","findings"]}'
+            --json-schema '{"type":"object","properties":{"summary":{"type":"string"},"findings":{"type":"array","maxItems":12,"items":{"type":"object","properties":{"title":{"type":"string","description":"At most 100 characters; shorten without changing the meaning"},"location":{"type":"string"},"body":{"type":"string"},"blocking":{"type":"boolean"},"type":{"type":"string","enum":["Bug","Task","Feature"]}},"required":["title","location","body","blocking","type"]}}},"required":["summary","findings"]}'
 
       - name: Post the review
         if: steps.gate.outputs.ok == 'true' && steps.review.outputs.structured_output != ''

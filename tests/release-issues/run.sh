@@ -86,10 +86,36 @@ world; rc=$(cr '{"issues":[{"title":"A","body":"b","type":"Bug","blocking":true}
 eq "create: count mismatch creates nothing" "$(count)" 0; has "create: mismatch comment" "No issue was created"
 world; rc=$(cr '{"issues":[{"title":"A","body":"b","type":"Bug","blocking":true},{"title":"A","body":"c","type":"Task","blocking":false}]}' 2)
 [ "$rc" != 0 ] && ok "create: duplicate titles fail" || bad "create: duplicates" "exit $rc"; eq "create: duplicates create nothing" "$(count)" 0
-long=$(printf 'x%.0s' $(seq 101)); world; rc=$(cr "{\"issues\":[{\"title\":\"$long\",\"body\":\"b\",\"type\":\"Bug\",\"blocking\":true}]}" 1)
-[ "$rc" != 0 ] && ok "create: title over 100 fails" || bad "create: long title" "exit $rc"
+one() { jq -n --arg t "$1" '{issues:[{title:$t,body:"b",type:"Bug",blocking:true}]}'; }
+long1=$(printf 'say "hi" $HOME %.0s' $(seq 12)); long1=${long1% }
+world; rc=$(cr "$(one "$long1")" 1); eq "create: title over 100 is shortened exit" "$rc" 0
+t=$(issue 100 .title)
+case "$t" in *…) ok ;; *) bad "create: shortened title ends with an ellipsis" "$t" ;; esac
+eq "create: shortened title is at most 100 characters" "$(jq -rn --arg t "$t" '$t | length <= 100')" true
+case "$long1" in "${t%…}"\ *) ok ;; *) bad "create: shortened title cut at a word boundary" "$t" ;; esac
+eq "create: shortened body starts with the full title" "$(issue 100 .body | head -1)" "Full title: $long1"
+long2=$(printf 'x%.0s' $(seq 101))
+world; rc=$(cr "$(one "$long2")" 1); eq "create: long title without spaces exit" "$rc" 0
+eq "create: long title without spaces cut at 99" "$(issue 100 .title)" "$(printf 'x%.0s' $(seq 99))…"
+world; rc=$(cr "$(jq -n --arg t "$long2" '{issues:[{title:$t,body:"b",type:"Bug",blocking:true},{title:"No test for --help",body:"Missing.",type:"Task",blocking:false}]}')" 2)
+eq "create: one long title exit" "$rc" 0; eq "create: one long title does not block the others" "$(count)" 2
+common=$(printf 'abcdefghi %.0s' $(seq 10))
+world; rc=$(cr "$(jq -n --arg a "${common}one" --arg b "${common}two" '{issues:[{title:$a,body:"b",type:"Bug",blocking:true},{title:$b,body:"c",type:"Task",blocking:false}]}')" 2)
+[ "$rc" != 0 ] && ok "create: titles that shorten to the same text fail" || bad "create: shortened duplicates" "exit $rc"
+eq "create: shortened duplicates create nothing" "$(count)" 0; has "create: shortened duplicates name the items" "items 1 and 2"
+world; rc=$(cr "$(one "$long1")" 1); has "create: results comment lists shortened titles" "item 1 as #100"
+world; rc=$(cr "$TWO" 2); case "$(cat "$FX/posted.txt")" in *"Titles shortened"*) bad "create: no shortened line without a long title" ;; *) ok ;; esac
+world; rc=$(cr "$(one "$long1")" 1); rc=$(cr "$(one "$long1")" 1)
+eq "create: re-run with a shortened title exit" "$rc" 0; eq "create: re-run with a shortened title does not duplicate" "$(count)" 1
 world; rc=$(cr '{"issues":[{"title":"A","body":"b","type":"Chore","blocking":true}]}' 1)
 [ "$rc" != 0 ] && ok "create: type Chore fails" || bad "create: type" "exit $rc"
+has "create: invalid item names index" "item 1"; has "create: invalid item names rule" "Bug, Task or Feature"
+for w in release-issues release-review; do
+  f="$ROOT/.github/workflows/$w.yml"
+  if grep -qF '"description":"At most 100 characters; shorten without changing the meaning"' "$f"; then ok; else bad "schemas: $w title states the limit" "$f"; fi
+  if grep -q maxLength "$f"; then bad "schemas: $w has no maxLength" "$f"; else ok; fi
+done
+if grep -qF '100 characters' "$ROOT/prompts/release-review.md"; then ok; else bad "prompt: release review states the limit"; fi
 world; rc=$(cr 'not json' 1); [ "$rc" != 0 ] && ok "create: malformed fails" || bad "create: malformed" "exit $rc"
 world; rc=$(cr '{"issues":[]}' 0); eq "create: zero issues exit" "$rc" 0
 has "create: no finding text" "no finding"; eq "create: zero done marker" "$(head -1 "$FX/posted.txt")" "<!-- release-review-issues -->"
