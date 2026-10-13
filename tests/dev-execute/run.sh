@@ -275,7 +275,8 @@ emit(rj.get("permissions") == {"contents": "read", "issues": "write"},
 emit(pj.get("needs") == "dev-execute" and "needs.dev-execute.outputs.action == 'pr'" in pcond
      and "needs.dev-execute.outputs.action == 'draft'" in pcond,
      "publish: needs the rounds job and runs only for a pr or draft action")
-emit(pj.get("permissions") == {"contents": "read"}, "publish: contents read only")
+emit(pj.get("permissions") == {"contents": "read", "issues": "read"}, "publish: contents read and issues read only")
+emit(re.search(r"^\s+issues: read # \S", open(sys.argv[1]).read(), re.M) is not None, "publish: issues read carries a reason")
 emit(outs == {"action", "verdict", "rounds", "branch", "ctype", "plan_url"},
      "publish: the rounds job hands over only the scalar outputs")
 emit(len(uploads) == 1 and len(downloads) == 1 and downloads[0].get("with", {}).get("name") == uploads[0]["with"]["name"],
@@ -286,6 +287,11 @@ emit(not any(re.search(r"\b(source|eval)\b|BASH_ENV|GITHUB_ENV|GITHUB_PATH", r) 
      "publish: no step sources, evaluates or reads an environment file")
 emit(0 <= pos("Verify the bundle") < pos("Mint the executor App token"),
      "publish: verifies the bundle before minting the token")
+plan_step = by_name.get("Check the bundle against the plan", {})
+emit(0 <= pos("Verify the bundle") < pos("Check the bundle against the plan") < pos("Mint the executor App token"),
+     "publish: checks the bundle against the plan after verifying it and before minting the token")
+emit(plan_step != {} and "verdict" not in json.dumps(plan_step).lower() and "needs." not in json.dumps(plan_step),
+     "publish: the plan check does not read the rounds verdict or any rounds output")
 
 # the token: scope, use and pinning
 emit(bool(mint.get("id")) and all(

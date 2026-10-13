@@ -292,6 +292,8 @@ jobs:
 
   # A separate runner and environment: no step here runs round, model, setup, check or test code, so
   # nothing the rounds wrote into GITHUB_ENV, GITHUB_PATH or BASH_ENV reaches the token. It takes only the bundle and the outputs.
+  # Publish re-checks the plan scope itself: it reads the approved plan's Files list from the plan comment and refuses
+  # a bundle that changes a workflow or deletes a file the plan does not name, before the executor token is minted.
   dev-publish:
     name: Development publication
     needs: dev-execute
@@ -300,6 +302,7 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: read # check out the caller repository, to compare the bundle with its base
+      issues: read # read the approved plan comment for the scope check
     steps:
       - name: Check out the caller repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -328,6 +331,54 @@ jobs:
           git fetch -q "$BUNDLE" "refs/push/head:refs/push/head"
           git merge-base --is-ancestor "$base" refs/push/head \
             || { echo "::error::the bundle does not extend the base commit"; exit 1; }
+
+      - name: Check the bundle against the plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ github.event.issue.number }}
+        run: |
+          set -euo pipefail
+          # the plan is read here from its comment, the only input besides the bundle and the base checkout; the
+          # same selection as the gate: the last comment by the bot that starts with the plan marker
+          plan=$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$ISSUE/comments" --jq '.[]' \
+            | jq -s 'map(select(.user.login == "github-actions[bot]" and (.body | startswith("<!-- dev-plan -->")))) | last // empty')
+          [ -n "$plan" ] || { echo "::error::there is no development plan comment on this issue"; exit 1; }
+          jq -r .body <<< "$plan" > "$RUNNER_TEMP/publish-plan.md"
+          # the backticked bullets between **Files** and the next bold line; the heading must be there
+          listing="$RUNNER_TEMP/publish-plan-files.txt"
+          awk 'BEGIN { seen = 0 }
+               /^\*\*Files\*\*/ { inside = 1; seen = 1; next }
+               inside && /^\*\*/ { inside = 0 }
+               inside && /^- `[^`]+`/ { s = substr($0, 4); print substr(s, 1, index(s, "`") - 1) }
+               END { exit !seen }' "$RUNNER_TEMP/publish-plan.md" > "$listing" \
+            || { echo "::error::the plan has no **Files** heading"; exit 1; }
+          allowed=()
+          while IFS= read -r p; do allowed+=("$p"); done < "$listing"
+          # literal comparison only: an entry ending in / names a directory, any other entry one file
+          named() {
+            local a
+            for a in "${allowed[@]}"; do
+              if [ "$1" = "$a" ] || { [[ $a == */ ]] && [[ $1 == "$a"* ]]; }; then return 0; fi
+            done
+            return 1
+          }
+          # the bundle's diff is read from the fresh git dir the verify step fetched it into, against the base of the checkout
+          export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
+          base=$(git rev-parse HEAD)
+          export GIT_DIR="$RUNNER_TEMP/publish.git"
+          deleted="$RUNNER_TEMP/publish-deleted.bin" changed="$RUNNER_TEMP/publish-workflows.bin"
+          git diff --name-only --no-renames -z --diff-filter=D "$base...refs/push/head" > "$deleted" \
+            || { echo "::error::the deletions in the bundle could not be read"; exit 1; }
+          git diff --name-only --no-renames -z --diff-filter=AM "$base...refs/push/head" -- .github/workflows > "$changed" \
+            || { echo "::error::the workflow changes in the bundle could not be read"; exit 1; }
+          refused=0
+          while IFS= read -r -d '' p; do
+            named "$p" || { echo "::error::deleted but not named in the plan Files list: $p"; refused=1; }
+          done < "$deleted"
+          while IFS= read -r -d '' p; do
+            named "$p" || { echo "::error::changed under .github/workflows but not named in the plan Files list: $p"; refused=1; }
+          done < "$changed"
+          [ "$refused" = 0 ] || exit 1
 
       - name: Mint the executor App token
         id: executor_app
