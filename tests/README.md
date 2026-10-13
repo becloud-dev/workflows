@@ -16,8 +16,9 @@ upstream binary is downloaded to `tests/.cache/jq` and its SHA-256 is verified b
 |---|---|
 | `bootstrap` | `templates/consumer/bootstrap.sh`: arguments, reads before writes, dry run |
 | `callers` | every template caller against the inputs, secrets and permissions of its reusable workflow (no broader scope, a workflow-level block); every permissions entry in the workflows, actions and templates has a reason comment |
-| `dev-execute` | gate, publish decision and bundle, findings of `dev-execute.yml`; the job split (the token only in `dev-publish`), the bundle verify, the push from the bundle, the pull request |
+| `dev-execute` | gate, publish decision and bundle, findings of `dev-execute.yml`; the job split (the token only in `dev-publish`), the bundle verify, the plan scope check of publish (it re-reads the plan and does not read the rounds), the push from the bundle, the pull request |
 | `dev-plan-post` | "Post the plan" of `dev-plan.yml`: structure, security links, refusal comment |
+| `dev-publish-scope` | "Check the bundle against the plan" of `dev-execute.yml`'s `dev-publish`: unnamed workflow changes and deletions are refused, the plan is read from its comment, fail closed, the rounds' outputs and a hostile environment do not change the decision |
 | `dev-round` | tools, commands and verdict steps of the `dev-round` composite |
 | `dev-round-red` | the red check: new tests must fail on the base tree |
 | `record-run` | what a run record holds and how it is named |
