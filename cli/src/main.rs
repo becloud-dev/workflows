@@ -95,6 +95,23 @@ enum Executor {
         /// The bare git directory the bundle was fetched into (`refs/push/head` is its tip).
         #[arg(long)]
         git_dir: PathBuf,
+        /// The file the step outputs are appended to (`$GITHUB_OUTPUT`): `workflows=true|false`.
+        #[arg(long)]
+        github_output: PathBuf,
+    },
+    /// Write the approved plan for the rounds: the comment the gate pinned, refused if it changed.
+    Plan {
+        /// owner/repo
+        #[arg(long)]
+        repo: String,
+        #[arg(long)]
+        issue: u64,
+        #[arg(long)]
+        plan_comment_id: u64,
+        #[arg(long)]
+        plan_sha256: String,
+        #[arg(long)]
+        plan_file: PathBuf,
     },
     /// Run the test command on the base tree with the change's test files; they must fail there.
     /// The command and the test path globs are read from `TEST` and `TEST_PATHS`.
@@ -173,6 +190,7 @@ fn main() -> ExitCode {
             plan_sha256,
             base,
             git_dir,
+            github_output,
         }) => publish::run(
             &Gh::from_env(),
             &repo,
@@ -183,6 +201,23 @@ fn main() -> ExitCode {
             },
             &base,
             &git_dir,
+            &github_output,
+        ),
+        Command::Executor(Executor::Plan {
+            repo,
+            issue,
+            plan_comment_id,
+            plan_sha256,
+            plan_file,
+        }) => publish::read_pinned(
+            &Gh::from_env(),
+            &repo,
+            issue,
+            &publish::Pin {
+                comment_id: plan_comment_id,
+                sha256: &plan_sha256,
+            },
+            &plan_file,
         ),
         Command::Executor(Executor::Red {
             base,

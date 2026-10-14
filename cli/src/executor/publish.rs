@@ -6,8 +6,9 @@
 use super::gate::sha256_hex;
 use super::{plan, scope};
 use crate::github::Gh;
-use anyhow::Result;
+use anyhow::{Context, Result};
 use serde_json::Value;
+use std::io::Write;
 use std::path::Path;
 
 const PLAN_MARKER: &str = "<!-- dev-plan -->";
@@ -19,15 +20,9 @@ pub struct Pin<'a> {
     pub sha256: &'a str,
 }
 
-/// The reasons to refuse the publication; empty when the bundle may be pushed. `comment` is the
-/// plan comment as read now, `changes` the bundle's (deleted, workflow-changed) paths.
-pub fn check(
-    comment: &Value,
-    repo: &str,
-    issue: u64,
-    pin: &Pin,
-    changes: Option<(Vec<String>, Vec<String>)>,
-) -> Vec<String> {
+/// The reasons not to take `comment`, as read now, for the plan the gate approved; empty when it
+/// is that plan, byte for byte.
+pub fn pin_refusals(comment: &Value, repo: &str, issue: u64, pin: &Pin) -> Vec<String> {
     let body = comment["body"].as_str().unwrap_or("");
     let mut refusals = Vec::new();
     if comment["id"].as_u64() != Some(pin.comment_id) {
@@ -48,6 +43,20 @@ pub fn check(
     if sha256_hex(body) != pin.sha256 {
         refusals.push("the plan comment was changed after it was approved".to_string());
     }
+    refusals
+}
+
+/// The reasons to refuse the publication; empty when the bundle may be pushed. `comment` is the
+/// plan comment as read now, `changes` the bundle's (deleted, workflow-changed) paths.
+pub fn check(
+    comment: &Value,
+    repo: &str,
+    issue: u64,
+    pin: &Pin,
+    changes: Option<(Vec<String>, Vec<String>)>,
+) -> Vec<String> {
+    let body = comment["body"].as_str().unwrap_or("");
+    let refusals = pin_refusals(comment, repo, issue, pin);
     if !refusals.is_empty() {
         // the plan cannot be trusted, so nothing is judged against its Files list
         return refusals;
@@ -75,14 +84,60 @@ pub fn check(
         .collect()
 }
 
+/// Reads the pinned plan comment for the rounds job, which starts on another runner after the gate:
+/// writes its body to `plan_file` when it is still the approved plan, otherwise prints each
+/// refusal as an error annotation and returns `Ok(false)`, so no round runs on another plan.
+pub fn read_pinned(gh: &Gh, repo: &str, issue: u64, pin: &Pin, plan_file: &Path) -> Result<bool> {
+    let comment = gh.get(&format!("repos/{repo}/issues/comments/{}", pin.comment_id))?;
+    let refusals = pin_refusals(&comment, repo, issue, pin);
+    for r in &refusals {
+        println!("::error::{r}");
+    }
+    if refusals.is_empty() {
+        std::fs::write(plan_file, comment["body"].as_str().unwrap_or(""))
+            .with_context(|| format!("cannot write {}", plan_file.display()))?;
+    }
+    Ok(refusals.is_empty())
+}
+
+/// Whether pushing these changes needs the workflows permission: a path under
+/// `.github/workflows/` is deleted, added or modified.
+pub fn touches_workflows(deleted: &[String], changed: &[String]) -> bool {
+    deleted
+        .iter()
+        .chain(changed)
+        .any(|p| p.starts_with(".github/workflows/"))
+}
+
 /// Reads the pinned comment, reads the bundle's diff from `git_dir` (the tip is `refs/push/head`),
-/// prints each refusal as an error annotation. `Ok(false)` when anything is refused.
-pub fn run(gh: &Gh, repo: &str, issue: u64, pin: &Pin, base: &str, git_dir: &Path) -> Result<bool> {
+/// prints each refusal as an error annotation. `Ok(false)` when anything is refused. When accepted,
+/// appends `workflows=true|false` to `github_output`, so the token asks for the workflows
+/// permission only when the push needs it.
+pub fn run(
+    gh: &Gh,
+    repo: &str,
+    issue: u64,
+    pin: &Pin,
+    base: &str,
+    git_dir: &Path,
+    github_output: &Path,
+) -> Result<bool> {
     let comment = gh.get(&format!("repos/{repo}/issues/comments/{}", pin.comment_id))?;
     let changes = scope::changes(&scope::Repo::GitDir(git_dir), base, "refs/push/head");
+    let workflows = changes
+        .as_ref()
+        .is_some_and(|(d, c)| touches_workflows(d, c));
     let refusals = check(&comment, repo, issue, pin, changes);
     for r in &refusals {
         println!("::error::{r}");
+    }
+    if refusals.is_empty() {
+        let mut out = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(github_output)
+            .with_context(|| format!("cannot open {}", github_output.display()))?;
+        writeln!(out, "workflows={workflows}")?;
     }
     Ok(refusals.is_empty())
 }
@@ -118,6 +173,17 @@ mod tests {
 
     fn v(p: &[&str]) -> Vec<String> {
         p.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn only_a_path_under_the_workflows_directory_needs_the_workflows_permission() {
+        assert!(touches_workflows(&v(&[".github/workflows/old.yml"]), &[]));
+        assert!(touches_workflows(&[], &v(&[".github/workflows/ci.yml"])));
+        assert!(!touches_workflows(&v(&["src/a.rs"]), &v(&[])));
+        assert!(!touches_workflows(
+            &v(&[".github/workflowsx/a"]),
+            &v(&[".github/actions/x/action.yml"])
+        ));
     }
 
     #[test]

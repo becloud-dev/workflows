@@ -53,12 +53,8 @@ impl Repo {
     /// Runs the check with `plan`; returns the outputs as (state, violations, kinds) and the section.
     fn check(&self, plan: &str) -> (String, String, String, String) {
         let n = COUNTER.fetch_add(1, Ordering::SeqCst);
-        let plan_file = self
-            .dir
-            .path()
-            .parent()
-            .unwrap()
-            .join(format!("plan-{n}.md"));
+        // inside the test's own directory: untracked, so it is not part of the diff
+        let plan_file = self.dir.path().join(format!(".plan-{n}.md"));
         std::fs::write(&plan_file, plan).unwrap();
         self.run_with(&plan_file, &self.base)
     }
@@ -175,7 +171,7 @@ fn a_plan_without_a_files_heading_or_a_bad_base_is_an_error() {
             "the deletions, the workflow changes or the plan Files list could not be read"
         )
     );
-    let plan = r.dir.path().parent().unwrap().join("plan-bad-base.md");
+    let plan = r.dir.path().join(".plan-bad-base.md");
     std::fs::write(&plan, format!("{HEAD}- `src/a.rs`\n")).unwrap();
     let (state, _, _, _) = r.run_with(&plan, "0000000000000000000000000000000000000000");
     assert_eq!(state, "error");
