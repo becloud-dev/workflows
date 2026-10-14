@@ -61,72 +61,44 @@ jobs:
       branch: ${{ steps.gate.outputs.branch }}
       ctype: ${{ steps.gate.outputs.ctype }}
       plan_url: ${{ steps.gate.outputs.plan_url }}
+      plan_comment_id: ${{ steps.gate.outputs.plan_comment_id }}
+      plan_sha256: ${{ steps.gate.outputs.plan_sha256 }}
     steps:
       - name: Check out the caller repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - name: Check out the shared prompts
+      - name: Check out the shared workflows
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: ${{ job.workflow_repository }}
           ref: ${{ job.workflow_sha }}
           path: .ai-workflows
-          sparse-checkout: prompts
           persist-credentials: false
+
+      - name: Set up the CLI
+        id: cli
+        uses: $/.github/actions/setup-cli
+        with:
+          path: .ai-workflows
 
       - name: Read the approval and the plan
         id: gate
         env:
           GH_TOKEN: ${{ github.token }}
           ISSUE: ${{ github.event.issue.number }}
-          BODY: ${{ github.event.comment.body }}
+          COMMENT_BODY: ${{ github.event.comment.body }}
           OWNERS: ${{ inputs.owners }}
+          WF: ${{ steps.cli.outputs.wf }}
         run: |
           set -euo pipefail
-          first=$(printf '%s' "$BODY" | head -n 1 | tr -d '\r')
-          if [ "$first" != "/approve" ]; then
-            echo "::error::the first line of the comment must be exactly /approve"
-            exit 1
+          # the CLI replies on the issue itself when it refuses, and pins the plan it approves
+          "$WF" executor gate --repo "$GITHUB_REPOSITORY" --issue "$ISSUE" --owners "$OWNERS" \
+            --plan-file "$RUNNER_TEMP/plan.md" --github-output "$GITHUB_OUTPUT"
+          if grep -qx 'ok=true' "$GITHUB_OUTPUT"; then
+            echo "base=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           fi
-          stop() {
-            gh issue comment "$ISSUE" --body "$1"
-            echo "ok=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          }
-          issue=$(gh api "repos/$GITHUB_REPOSITORY/issues/$ISSUE")
-          [ "$(jq -r '[.labels[].name] | index("RELEASE") != null' <<< "$issue")" = true ] \
-            || stop "No execution: this issue does not carry \`RELEASE\`."
-          type=$(jq -r '.type.name // ""' <<< "$issue")
-          [ "$type" != Project ] \
-            || stop "An execution applies to the sub-issues of a Project, not to the Project itself."
-          author_ok=$(jq -n --arg a "$(jq -r .user.login <<< "$issue")" --arg o "$OWNERS" \
-            '(($o | ascii_downcase | split(",")) + ["github-actions[bot]"]) | index($a | ascii_downcase) != null')
-          [ "$author_ok" = true ] \
-            || stop "No execution: this issue was not written by an owner or by the automation."
-          plan=$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$ISSUE/comments" --jq '.[]' \
-            | jq -s 'map(select(.user.login == "github-actions[bot]" and (.body | startswith("<!-- dev-plan -->")))) | last // empty')
-          [ -n "$plan" ] || stop "No execution: there is no development plan comment on this issue. Add \`RELEASE\` to get one."
-          jq -r .body <<< "$plan" > "$RUNNER_TEMP/plan.md"
-          case "$type" in
-            Bug) ctype=fix ;;
-            Feature) ctype=feat ;;
-            *) ctype=chore ;;
-          esac
-          slug=$(jq -r .title <<< "$issue" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//' | cut -c1-40 | sed -E 's/-+$//')
-          branch="$ctype/$ISSUE-${slug:-change}"
-          if gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$branch" > /dev/null 2>&1; then
-            stop "No execution: the branch \`$branch\` already exists. Delete it or continue there by hand."
-          fi
-          {
-            echo "ok=true"
-            echo "ctype=$ctype"
-            echo "branch=$branch"
-            echo "plan_file=$RUNNER_TEMP/plan.md"
-            echo "plan_url=$(jq -r .html_url <<< "$plan")"
-            echo "base=$(git rev-parse HEAD)"
-          } >> "$GITHUB_OUTPUT"
 
       - name: Create the branch
         if: steps.gate.outputs.ok == 'true'
