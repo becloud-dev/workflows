@@ -12,9 +12,12 @@ bash tests/<suite>/run.sh      # one suite
 Needs `bash`, `git`, `curl`, `python3` with PyYAML, `sha256sum`. When the local `jq` is not 1.7.1, the
 upstream binary is downloaded to `tests/.cache/jq` and its SHA-256 is verified before use.
 
+The CLI under `cli/` has its own tests, run by the `Rust CLI` job: `cargo test --locked` in `cli/`,
+against stub `claude` and `gh` (`cli/tests/bin`) answering with recorded real output.
+
 | Suite | What it covers |
 |---|---|
-| `agent-calls` | every claude-code-action call passes `--setting-sources user`, so no call loads the checkout's project or local settings, hooks or `CLAUDE.md` (#78); the checker fails on a missing, widened or repeated flag |
+| `agent-calls` | every claude-code-action call passes `--setting-sources user`, so no call loads the checkout's project or local settings, hooks or `CLAUDE.md` (#78); the checker fails on a missing, widened or repeated flag; the steps moved to the CLI make no claude-code-action call and run `wf` |
 | `bootstrap` | `templates/consumer/bootstrap.sh`: arguments, reads before writes, dry run |
 | `callers` | every template caller against the inputs, secrets and permissions of its reusable workflow (no broader scope, a workflow-level block); every permissions entry in the workflows, actions and templates has a reason comment |
 | `dev-execute` | gate, publish decision and bundle, findings of `dev-execute.yml`; the job split (the token only in `dev-publish`), the bundle verify, the plan scope check of publish (it re-reads the plan and does not read the rounds), the push from the bundle, the pull request |
@@ -22,6 +25,7 @@ upstream binary is downloaded to `tests/.cache/jq` and its SHA-256 is verified b
 | `dev-publish-scope` | "Check the bundle against the plan" of `dev-execute.yml`'s `dev-publish`: unnamed workflow changes and deletions are refused, the plan is read from its comment, fail closed, the rounds' outputs and a hostile environment do not change the decision |
 | `dev-round` | tools, commands and verdict steps of the `dev-round` composite |
 | `dev-round-red` | the red check: new tests must fail on the base tree |
+| `planner-backlog` | "Plan the backlog" of `planner-backlog.yml` (wf's exit status is the step's, the summary and the record reach the step summary) and the `setup-cli` composite (the Claude Code binary is used only when its SHA-256 and version match; the CLI is built `--release --locked`) |
 | `record-run` | what a run record holds and how it is named |
 | `release-config` | the release-please config of the repository and the consumer template: `bump-minor-pre-major` is set, the manifest is still 0.x |
 | `release-gate` | owner label, blockers, stale or edited review; also mutates the step |

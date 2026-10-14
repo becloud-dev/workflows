@@ -1,12 +1,22 @@
 #!/usr/bin/env bash
 # Every claude-code-action call passes `--setting-sources user`, so it loads no project or local settings,
 # hooks or CLAUDE.md from the checkout (#78); and the checker itself fails on calls that do not.
+# The steps moved to the CLI make no claude-code-action call: the CLI calls `claude -p --restricted`,
+# pinned by its own tests (cli/tests/agent_call.rs).
 . "$(dirname "$0")/../lib.sh"
 cd "$(dirname "$0")"
 
 out=$(python3 -I agent_calls.py "$ROOT"); rc=$?
 [ "$rc" = 0 ] && ok || bad "agent calls: $(printf '%s\n' "$out" | grep '^FAIL' | head -3 | tr '\n' ' ')"
-[ "$(printf '%s\n' "$out" | grep -c '^OK')" -ge 10 ] && ok || bad "fewer than 10 agent calls checked"
+[ "$(printf '%s\n' "$out" | grep -c '^OK')" -ge 9 ] && ok || bad "fewer than 9 agent calls checked"
+
+# Steps on the CLI: no claude-code-action call, the CLI built by setup-cli and run.
+for step in planner-backlog:'planner backlog'; do
+  f=$ROOT/.github/workflows/${step%%:*}.yml cmd=${step#*:}
+  ! grep -q 'anthropics/claude-code-action@' "$f" && ok || bad "${step%%:*} still calls claude-code-action"
+  grep -q 'uses: \$/.github/actions/setup-cli$' "$f" && ok || bad "${step%%:*} does not set up the CLI"
+  grep -q "\"\$WF\" $cmd " "$f" && ok || bad "${step%%:*} does not run wf $cmd"
+done
 printf '%s\n' "$out" | grep -q 'dev-round/action.yml -/' && ok || bad "the composite action's calls are not checked"
 
 # The checker must be able to fail: the same workflow with the flag missing, widened, and given twice.
