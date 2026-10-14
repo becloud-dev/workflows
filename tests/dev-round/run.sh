@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The tools, commands and verdict steps of the dev-round composite (the red step has its own suite).
+# The tools and commands steps of the dev-round composite, and the verdict step's call to wf (the red step has its own suite).
 . "$(dirname "$0")/../lib.sh"
 cd "$(dirname "$0")"
 W=$WORK; mkdir -p "$W/bin"
@@ -73,39 +73,29 @@ mkfix; newcase; (cd "$W/repo" && ROUND=1 CHECK='yes aaaaaaaaaaaaaaaaaaaa | head 
 n=$(awk '/^```$/{c++;next} c==1{print}' "$(out results_file)" | wc -c)
 [ "$n" -le 4100 ] && ok "commands: tail capped ($n characters)" || bad "commands: tail $n characters"
 
-echo "# verdict"
-EXE_DONE='{"outcome":"done","summary":"s","red_seen":true,"commits":["feat: x"]}'
-EXE_BLK='{"outcome":"blocked","summary":"s","blocked_reason":"no such file"}'
-PASS='{"verdict":"pass","summary":"s","criteria":[{"criterion":1,"met":true},{"criterion":2,"met":true}],"findings":[]}'
-FAIL='{"verdict":"fail","summary":"s","criteria":[{"criterion":1,"met":true},{"criterion":2,"met":false}],"findings":[{"criterion":2,"problem":"help flag missing"}]}'
-PASS_UNMET='{"verdict":"pass","summary":"s","criteria":[{"criterion":1,"met":true},{"criterion":2,"met":false}],"findings":[]}'
-FAIL_NOFIND='{"verdict":"fail","summary":"s","criteria":[{"criterion":1,"met":false}],"findings":[]}'
-vrun() { # EXECUTE CHECK CHECK_EXIT TEST_EXIT
-  newcase; ROUND=2 EXECUTE="$1" CHECK="$2" CHECK_EXIT="$3" TEST_EXIT="$4" bash "$W/verdict.sh" >"$C/log" 2>&1; VRC=$?
-  O=$(out outcome); V=$(out verdict); F=$(out findings_file)
+echo "# verdict: the step runs wf"
+# the verdict cases (blocked, pass, model fail, forced fails, unmet criterion, invalid results) are
+# cli/src/executor/verdict.rs; here only what the step wraps around the CLI
+cat > "$W/bin/wf-verdict" <<'STUB'
+#!/usr/bin/env bash
+echo "$*" > "$STUB_ARGS"
+env | grep -E '^(EXECUTE|CHECK|CHECK_EXIT|TEST_EXIT|RED_STATE|SCOPE_STATE|SCOPE_VIOLATIONS|SCOPE_KINDS)=' | sort > "$STUB_ARGS.env"
+echo "outcome=done" >> "$GITHUB_OUTPUT"
+exit "${STUB_EXIT:-0}"
+STUB
+chmod +x "$W/bin/wf-verdict"
+vrun() { # exit code of wf
+  VO=$(mktemp "$W/vout.XXXXXX"); STUB_ARGS=$(mktemp "$W/vargs.XXXXXX"); export STUB_ARGS STUB_EXIT=$1
+  ( cd "$W" && WF="$W/bin/wf-verdict" RUNNER_TEMP="$W/tmp" ROUND=2 EXECUTE='{"outcome":"done"}' CHECK='{"verdict":"pass"}' \
+      CHECK_EXIT=0 TEST_EXIT=1 RED_STATE=red SCOPE_STATE=ok SCOPE_VIOLATIONS='[]' SCOPE_KINDS='[]' GITHUB_OUTPUT="$VO" \
+      bash "$W/verdict.sh" > /dev/null 2>&1 )
 }
-vrun "$EXE_BLK" "" "" "";           expect "verdict: step exit 0 (blocked)" $VRC
-[ "$O/$V" = blocked/none ] && grep -q 'no such file' "$F" && ok "verdict: blocked, reason in findings" || bad "verdict: blocked ($O/$V)"
-vrun "$EXE_DONE" "$PASS" 0 0
-[ "$O/$V" = done/pass ] && ok "verdict: done and pass" || bad "verdict: pass ($O/$V)"
-vrun "$EXE_DONE" "$FAIL" 0 0
-[ "$O/$V" = done/fail ] && grep -q 'criterion 2: help flag missing' "$F" && ok "verdict: model fail keeps findings" || bad "verdict: fail ($O/$V)"
-vrun "$EXE_DONE" "$PASS" 0 1
-[ "$O/$V" = done/fail ] && grep -q 'test command exited 1' "$F" && ok "verdict: non-zero test exit forces fail" || bad "verdict: forced fail ($O/$V)"
-vrun "$EXE_DONE" "$PASS" 2 0
-[ "$O/$V" = done/fail ] && grep -q 'check command exited 2' "$F" && ok "verdict: non-zero check exit forces fail" || bad "verdict: forced fail check ($O/$V)"
-vrun "$EXE_DONE" "$PASS_UNMET" 0 0
-[ "$O/$V" = done/fail ] && grep -q 'criterion 2 is not met' "$F" && ok "verdict: pass with unmet criterion becomes fail, named" || bad "verdict: unmet ($O/$V)"
-vrun "$EXE_DONE" "$FAIL_NOFIND" 0 0
-[ "$O/$V" = failed/none ] && ok "verdict: fail without findings is invalid (failed)" || bad "verdict: fail no findings ($O/$V)"
-vrun "$EXE_DONE" 'not json' 0 0
-[ "$O/$V" = failed/none ] && ok "verdict: invalid check JSON is failed" || bad "verdict: bad json ($O/$V)"
-vrun "$EXE_DONE" "" "" ""
-[ "$O/$V" = failed/none ] && ok "verdict: missing check result is failed" || bad "verdict: no check ($O/$V)"
-vrun "" "" "" ""
-[ "$O/$V" = failed/none ] && ok "verdict: missing execute result is failed" || bad "verdict: no execute ($O/$V)"
-vrun "garbage" "$PASS" 0 0
-[ "$O/$V" = failed/none ] && ok "verdict: invalid execute JSON is failed" || bad "verdict: bad execute json ($O/$V)"
-[ "$(basename "$F")" = round-2-findings.md ] && ok "verdict: file named by round" || bad "verdict: file name $F"
+vrun 0
+[ "$(cat "$STUB_ARGS")" = "executor verdict --round 2 --findings-file $W/tmp/round-2-findings.md --github-output $VO" ] \
+  && ok || bad "verdict step arguments: $(cat "$STUB_ARGS")"
+[ "$(wc -l < "$STUB_ARGS.env")" = 8 ] && grep -qx 'TEST_EXIT=1' "$STUB_ARGS.env" && ok || bad "verdict step: the results do not reach wf: $(cat "$STUB_ARGS.env")"
+grep -qx 'outcome=done' "$VO" && ! grep -q 'outcome=failed' "$VO" && ok || bad "verdict step: the CLI's outputs are not passed through"
+vrun 3
+grep -qx 'outcome=failed' "$VO" && grep -qx 'verdict=none' "$VO" && ok || bad "verdict step: a failing CLI must leave the round failed: $(cat "$VO")"
 
 summary

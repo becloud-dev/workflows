@@ -1,85 +1,35 @@
 #!/usr/bin/env bash
-# The `red` step (new tests must fail on the base tree) and the verdict step of the dev-round composite.
+# The `red` step of the dev-round composite: a call to `wf executor red`. The red check itself (red
+# on the base, green on the base, code only, deleted or trimmed tests, two globs, lines added to an
+# existing test, a bad base, no worktree left behind) is cli/src/executor/red.rs and
+# cli/tests/executor_red.rs, on a shallow clone as the runner's checkout is.
 . "$(dirname "$0")/../lib.sh"
 cd "$(dirname "$0")"
 extract_step "$ROOT/.github/actions/dev-round/action.yml" - red "$WORK/red.sh"
-extract_step "$ROOT/.github/actions/dev-round/action.yml" - verdict "$WORK/verdict.sh"
-RED=$WORK/red.sh; VERDICT=$WORK/verdict.sh; S=$WORK
-mkrepo() { # builds origin with base commit, shallow clone, prints clone dir
-  local d; d=$(mktemp -d "$S/w.XXXXXX")
-  git init -q -b main "$d/origin"
-  ( cd "$d/origin" && git config user.email t@t && git config user.name t \
-    && mkdir bin tests && printf 'echo hi\n' > bin/greet \
-    && printf 'test "$(sh bin/greet)" = hi\n' > tests/greet_test.sh \
-    && printf 'notes\n' > tests/README.md \
-    && git add . && git commit -qm base )
-  git clone -q --depth 1 "file://$d/origin" "$d/clone"
-  ( cd "$d/clone" && git config user.email t@t && git config user.name t )
-  echo "$d/clone"
+S=$WORK
+
+cat > "$S/wf" <<'STUB'
+#!/usr/bin/env bash
+echo "$*" > "$STUB_ARGS"
+printf 'TEST=%s\nTEST_PATHS=%s\n' "${TEST-unset}" "${TEST_PATHS-unset}" >> "$STUB_ARGS"
+[ "${STUB_EXIT:-0}" = 0 ] && echo "red_state=red" >> "$GITHUB_OUTPUT"
+exit "${STUB_EXIT:-0}"
+STUB
+chmod +x "$S/wf"
+run_red() { # exit code of wf
+  RO=$(mktemp "$S/rout.XXXXXX"); STUB_ARGS=$(mktemp "$S/rargs.XXXXXX"); export STUB_ARGS STUB_EXIT=$1
+  ( cd "$S" && WF="$S/wf" TEST='make test' TEST_PATHS='tests/*,spec/*' BASE=abc123 ROUND=2 RUNNER_TEMP="$S/tmp" \
+      RESULTS=/r/results.md GITHUB_OUTPUT="$RO" bash "$WORK/red.sh" > /dev/null 2>&1 ); RC=$?
 }
 
-run_red() { # name expect_state expect_files_re  TEST TEST_PATHS  setup-function
-  local name=$1 want=$2 test=$3 paths=$4 setup=$5 base repo out state
-  repo=$(mkrepo); base=$(git -C "$repo" rev-parse HEAD)
-  ( cd "$repo" && $setup )
-  out=$(mktemp "$S/out.XXXXXX"); : > "$out.res"
-  state=$( cd "$repo" && env RUNNER_TEMP="$S" TEST="$test" TEST_PATHS="$paths" BASE="${BASE_OVERRIDE:-$base}" \
-        ROUND=1 RESULTS="$out.res" GITHUB_OUTPUT="$out" bash "$RED" >/dev/null 2>&1; grep -h '^red_state=' "$out" | cut -d= -f2)
-  if [ "$state" = "$want" ]; then ok; else bad "$name: want $want got '$state'"; cat "$out.res"; fi
-  # no leftover worktree
-  if [ -n "$(git -C "$repo" worktree list | sed 1d)" ]; then bad "$name: worktree left behind"; fi
-  LAST_RES="$out.res"
-}
-
-add_failing_test() { printf 'test "$(sh bin/greet --shout)" = HI\n' > tests/shout_test.sh; printf 'echo hi\n' > bin/greet; git add .; git commit -qm 'test: shout'; }
-add_passing_test() { printf 'test -f bin/greet\n' > tests/exists_test.sh; git add .; git commit -qm 'test: exists'; }
-touch_code_only() { printf 'echo hello\n' > bin/greet; git add .; git commit -qm 'feat: x'; }
-delete_test() { git rm -q tests/greet_test.sh; git commit -qm 'test: drop'; }
-add_test_in_other_dir() { mkdir spec; printf 'exit 1\n' > spec/a_spec.sh; git add .; git commit -qm 'test: spec'; }
-trim_test() { : > tests/greet_test.sh; git add .; git commit -qm 'test: trim'; }
-add_failing_line_to_test() { printf 'test "$(sh bin/greet --shout)" = HI\n' >> tests/greet_test.sh; git add .; git commit -qm 'test: shout line'; }
-add_passing_line_to_test() { printf 'test -f bin/greet\n' >> tests/greet_test.sh; git add .; git commit -qm 'test: exists line'; }
-trim_readme() { : > tests/README.md; git add .; git commit -qm 'docs: trim'; }
-no_commit() { :; }
-
-T='sh tests/shout_test.sh'
-run_red "red on base"               red           'sh tests/shout_test.sh' 'tests/*' add_failing_test
-grep -q 'exit code on the base tree: 1' "$LAST_RES" && ok || bad "red: results file lacks exit code"
-run_red "green on base"             green_on_base 'sh tests/exists_test.sh' 'tests/*' add_passing_test
-run_red "code only, no test file"   none          'sh tests/greet_test.sh' 'tests/*' touch_code_only
-run_red "paths empty"               none          'sh tests/shout_test.sh' ''        add_failing_test
-run_red "test command empty"        none          ''                       'tests/*' add_failing_test
-run_red "deleted test is skipped"   none          'sh tests/greet_test.sh' 'tests/*' delete_test
-run_red "two globs, second matches" red           'sh spec/a_spec.sh'      'nope/*,spec/*' add_test_in_other_dir
-run_red "no commits ahead"          none          'sh tests/greet_test.sh' 'tests/*' no_commit
-run_red "deletion-only edit of a test file is skipped" none 'sh tests/greet_test.sh' 'tests/*' trim_test
-run_red "lines added to an existing test file are checked" red 'sh tests/greet_test.sh' 'tests/*' add_failing_line_to_test
-run_red "lines added to an existing test file that pass on base" green_on_base 'sh tests/greet_test.sh' 'tests/*' add_passing_line_to_test
-run_red "deletion-only edit of a README under the globs is skipped" none 'sh tests/greet_test.sh' 'tests/*' trim_readme
-BASE_OVERRIDE=deadbeefdeadbeefdeadbeefdeadbeefdeadbeef \
-run_red "bad base gives error"      error         'sh tests/shout_test.sh' 'tests/*' add_failing_test
-unset BASE_OVERRIDE
-
-# verdict step: needs jq 1.7.1; env EXECUTE, CHECK, CHECK_EXIT, TEST_EXIT, RED_STATE, ROUND
-run_verdict() { # name want_verdict RED_STATE CHECK_EXIT TEST_EXIT
-  local name=$1 want=$2 red=$3 ce=$4 te=$5 out got
-  out=$(mktemp "$S/vout.XXXXXX")
-  EX='{"outcome":"done","summary":"s","red_seen":true,"commits":["a"]}'
-  CK='{"verdict":"pass","summary":"s","criteria":[{"criterion":1,"met":true}],"findings":[]}'
-  got=$(RUNNER_TEMP="$S" EXECUTE="$EX" CHECK="$CK" CHECK_EXIT="$ce" TEST_EXIT="$te" RED_STATE="$red" ROUND=1 \
-        GITHUB_OUTPUT="$out" bash "$VERDICT" >/dev/null 2>&1; grep -h '^verdict=' "$out" | cut -d= -f2)
-  if [ "$got" = "$want" ]; then ok; else bad "verdict $name: want $want got '$got'"; fi
-  VF="$S/round-1-findings.md"
-}
-run_verdict "red state red passes"       pass red           0 0
-run_verdict "none passes"                pass none          0 0
-run_verdict "deletion-only change passes" pass none         0 0
-run_verdict "unset passes"               pass ""            0 0
-run_verdict "error passes"               pass error         0 0
-run_verdict "green_on_base forces fail"  fail green_on_base 0 0
-grep -q 'pass on the base tree' "$VF" && ok || bad "findings lack the green_on_base line"
-run_verdict "test exit still fails"      fail red           0 1
-run_verdict "check exit still fails"     fail none          2 0
-run_verdict "test exit with green_on_base" fail green_on_base 0 1
+run_red 0
+[ "$(head -1 "$STUB_ARGS")" = "executor red --base abc123 --round 2 --work-dir $S/tmp --results /r/results.md --github-output $RO" ] \
+  && ok || bad "red step arguments: $(head -1 "$STUB_ARGS")"
+grep -qx 'TEST=make test' "$STUB_ARGS" && grep -qx 'TEST_PATHS=tests/\*,spec/\*' "$STUB_ARGS" && ok \
+  || bad "red step: the test command and paths do not reach wf through the environment"
+[ "$RC" = 0 ] && grep -qx 'red_state=red' "$RO" && ok || bad "red step: the CLI's state is not passed through"
+run_red 2
+[ "$RC" = 0 ] && [ "$(grep -c '^red_state=' "$RO")" = 1 ] && grep -qx 'red_state=error' "$RO" && ok \
+  || bad "red step: a failing CLI must leave red_state=error and not fail the step: $(cat "$RO")"
 
 summary

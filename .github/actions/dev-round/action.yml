@@ -117,44 +117,12 @@ runs:
         BASE: ${{ inputs.base }}
         ROUND: ${{ inputs.round }}
         RESULTS: ${{ steps.commands.outputs.results_file }}
+        WF: ${{ inputs.wf }}
       run: |
         set -uo pipefail
-        state=none code="" files=()
-        if [ -n "$TEST" ] && [ -n "$TEST_PATHS" ]; then
-          # numstat lines: added, deleted, path; binary files show "-" and are kept
-          if changed=$(git diff --numstat --no-renames --diff-filter=AMR "$BASE...HEAD" 2> /dev/null); then
-            IFS=, read -ra globs <<< "$TEST_PATHS"
-            while IFS=$'\t' read -r added removed f; do
-              [ -n "$f" ] || continue
-              [ "$added" = - ] || [ "$added" -gt 0 ] || continue
-              for g in "${globs[@]}"; do
-                case "$f" in $g) files+=("$f"); break ;; esac
-              done
-            done <<< "$changed"
-          else
-            state=error
-          fi
-        fi
-        if [ "${#files[@]}" -gt 0 ]; then
-          tree="$RUNNER_TEMP/base-tree-$ROUND"
-          log="$RUNNER_TEMP/red-$ROUND.log"
-          if git worktree add --detach "$tree" "$BASE" > "$log" 2>&1 \
-             && git -C "$tree" checkout "$(git rev-parse HEAD)" -- "${files[@]}" >> "$log" 2>&1; then
-            code=0
-            (cd "$tree" && bash -c "$TEST") >> "$log" 2>&1 || code=$?
-            if [ "$code" = 0 ]; then state=green_on_base; else state=red; fi
-          else
-            state=error
-          fi
-          git worktree remove --force "$tree" > /dev/null 2>&1 || true
-          {
-            printf '### red check\nstate: %s\ntest files: %s\nexit code on the base tree: %s\n```\n%s\n```\n\n' \
-              "$state" "${files[*]}" "${code:-n/a}" "$(tail -n 30 "$log" | tail -c 2000)"
-          } >> "$RESULTS"
-        else
-          printf '### red check\nstate: %s (no test file with added lines in the diff, not configured, or the diff failed)\n\n' "$state" >> "$RESULTS"
-        fi
-        echo "red_state=$state" >> "$GITHUB_OUTPUT"
+        # the CLI reads TEST and TEST_PATHS from the environment; an error state does not fail the round
+        "$WF" executor red --base "$BASE" --round "$ROUND" --work-dir "$RUNNER_TEMP" --results "$RESULTS" \
+          --github-output "$GITHUB_OUTPUT" || echo "red_state=error" >> "$GITHUB_OUTPUT"
 
     # every deleted path, and every added, modified or renamed-to path under .github/workflows, must be
     # named in the plan's Files list; a path outside it, or a diff or plan that cannot be read (error),
@@ -215,41 +183,10 @@ runs:
         SCOPE_VIOLATIONS: ${{ steps.scope.outputs.scope_violations }}
         SCOPE_KINDS: ${{ steps.scope.outputs.scope_violation_kinds }}
         ROUND: ${{ inputs.round }}
+        WF: ${{ inputs.wf }}
       run: |
         set -uo pipefail
-        findings="$RUNNER_TEMP/round-$ROUND-findings.md"
-        outcome=failed verdict=none
-        exec_outcome=$(jq -r '.outcome // ""' <<< "${EXECUTE:-null}" 2>/dev/null || true)
-        if [ "$exec_outcome" = blocked ]; then
-          outcome=blocked
-          { echo "The executor reported it is blocked:"; jq -r '.blocked_reason // "no reason given"' <<< "$EXECUTE"; } > "$findings"
-        elif [ "$exec_outcome" = done ] && [ -n "${CHECK:-}" ] \
-             && jq -e '(.verdict | IN("pass","fail")) and (.criteria | type == "array")
-                       and ((.verdict == "fail") == ((.findings | length) > 0))' <<< "$CHECK" > /dev/null; then
-          outcome=done
-          verdict=$(jq -r .verdict <<< "$CHECK")
-          # mechanism, not prose: a non-zero command forces fail
-          if [ "${CHECK_EXIT:-0}" != 0 ] || [ "${TEST_EXIT:-0}" != 0 ] \
-             || [ "${RED_STATE:-none}" = green_on_base ] \
-             || [ "${SCOPE_STATE:-none}" = out_of_scope ] || [ "${SCOPE_STATE:-none}" = error ] \
-             || [ "$(jq '[.criteria[] | select(.met | not)] | length' <<< "$CHECK")" -gt 0 ]; then
-            verdict=fail
-          fi
-          {
-            echo "Round $ROUND check findings:"
-            jq -r '.findings[] | "- criterion \(.criterion): \(.problem)"' <<< "$CHECK"
-            jq -r '.criteria[] | select(.met | not) | "- criterion \(.criterion) is not met"' <<< "$CHECK"
-            [ "${CHECK_EXIT:-0}" != 0 ] && echo "- the check command exited ${CHECK_EXIT}"
-            [ "${TEST_EXIT:-0}" != 0 ] && echo "- the test command exited ${TEST_EXIT}"
-            [ "${RED_STATE:-none}" = green_on_base ] && echo "- the new tests pass on the base tree; they do not pin the change"
-            [ "${SCOPE_STATE:-none}" = out_of_scope ] && jq -r --argjson k "${SCOPE_KINDS:-[]}" '. as $v
-              | range(length) as $i
-              | if ($k[$i] // "deleted") == "changed"
-                then "- change of \($v[$i]) under .github/workflows is not in the plan Files list"
-                else "- deletion of \($v[$i]) is not in the plan Files list" end' <<< "$SCOPE_VIOLATIONS"
-            [ "${SCOPE_STATE:-none}" = error ] && echo "- the deletions, the workflow changes or the plan Files list could not be read"
-          } > "$findings"
-        else
-          echo "The round produced no valid result." > "$findings"
-        fi
-        { echo "outcome=$outcome"; echo "verdict=$verdict"; echo "findings_file=$findings"; } >> "$GITHUB_OUTPUT"
+        # the CLI reads the round's results from the environment above; a CLI that does not run to its
+        # end leaves the round failed, so nothing is published from it
+        "$WF" executor verdict --round "$ROUND" --findings-file "$RUNNER_TEMP/round-$ROUND-findings.md" \
+          --github-output "$GITHUB_OUTPUT" || printf 'outcome=failed\nverdict=none\n' >> "$GITHUB_OUTPUT"

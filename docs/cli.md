@@ -22,6 +22,9 @@ set up the CLI and run it.
 | `wf planner backlog --repo <owner/repo> --model <id> --out <dir>` | Orders the open issues and reports parents, blockers, duplicates and gaps. Writes nothing on GitHub |
 | `wf executor gate --repo <owner/repo> --issue <n> --owners <logins> --plan-file <f> --github-output <f>` | Reads an `/approve` comment (body in `COMMENT_BODY`): replies on the issue when it refuses, otherwise writes the plan and pins it (comment ID and body SHA-256). Replaces the gate shell step |
 | `wf executor scope --base <sha> --plan-file <f> --results <f> --github-output <f>` | Judges a round's deletions and workflow changes against the plan's Files list; fails closed. Replaces the `scope` shell step |
+| `wf executor red --base <sha> --round <n> --work-dir <d> --results <f> --github-output <f>` | Runs the test command (`TEST`) on the base tree with the change's test files (`TEST_PATHS` globs); they must fail there. Replaces the `red` shell step |
+| `wf executor verdict --round <n> --findings-file <f> --github-output <f>` | The round's verdict from the executor and check outputs and the recorded results; failing commands, green-on-base tests, scope violations and unmet criteria force fail. Replaces the `verdict` shell step |
+| `wf executor decide --base <sha> --work-dir <d> --github-output <f>` | Pull request, draft or comment from the last round; bundles the commits from a fresh git dir with no global or system git config read. Replaces the `final` shell step |
 | `wf executor publish-check --repo <owner/repo> --issue <n> --plan-comment-id <id> --plan-sha256 <h> --base <sha> --git-dir <d>` | Refuses a bundle whose plan comment changed after the approval, or whose changes the plan does not name. Replaces the publish plan-check shell step |
 
 ### Agent calls
@@ -79,7 +82,7 @@ Each step has a review issue that holds the accepted review; its open sub-issues
 | --- | --- | --- |
 | triage | `triage format-check` and the classify, split and rewrite calls | The CLI fetches the issue so the agent has `Read` only and no token; it verifies a rewrite keeps every word and reads back its writes |
 | dev-plan | `plan gate`, `plan input`, `plan validate`, `plan render` | A research call (domains the repository lists, empty by default), a planner call and a plan reviewer call; every failed rule is named and the plan retried once |
-| dev-execute, rounds | `executor red`, `verdict`, `decide` | The red check, the verdict and the publish decision still run as shell and jq in the `dev-round` action and the workflow; then a test-writer call, a red proof by the CLI, then an implementer call |
+| dev-execute, rounds | agent calls | The execute and check calls move from claude-code-action to the CLI; then a test-writer call, a red proof by the CLI, then an implementer call |
 | dev-execute, publish | publish commands | The gate runs as the first step of the rounds job (the pin is written before any round code); it moves to a job of its own; the CLI recomputes the verdict from the recorded results; the workflows token is minted only when the bundle changes `.github/workflows` |
 | release-please | `release tag` | The major tag move, with the same checks; the token and trigger stay in YAML |
 | release-review | review commands | A correctness call and a safety call, merged by the CLI with blocking findings first; the review is identified by a `release-review` commit status on the reviewed commit, whose description is the comment body's hash |

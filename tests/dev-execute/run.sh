@@ -90,51 +90,47 @@ unset STUB_WF_OUTPUT
 ! grep -q 'COMMENT_BODY\|github.event.comment' <<< "$(python3 -I -c 'import yaml,sys; d=yaml.safe_load(open(sys.argv[1])); print([s for s in d["jobs"]["dev-execute"]["steps"] if s.get("id")=="gate"][0]["run"])' "$ROOT/.github/workflows/dev-execute.yml")" \
   && ok "gate step: the comment body is not expanded inside the script" || bad "gate step: body in script"
 
-echo "# final"
-final() { # base-ref R1 R2 R3 outcomes... via env set by caller
-  ( cd "$W/repo" && BASE="$FBASE" R1_OUTCOME="${R1O:-}" R1_VERDICT="${R1V:-}" R1_FINDINGS="${R1F:-}" \
-      R2_OUTCOME="${R2O:-}" R2_VERDICT="${R2V:-}" R2_FINDINGS="${R2F:-}" \
-      R3_OUTCOME="${R3O:-}" R3_VERDICT="${R3V:-}" R3_FINDINGS="${R3F:-}" bash "$W/final.sh" > "$C/stdout" 2>&1 ); FRC=$?; unset R1O R1V R1F R2O R2V R2F R3O R3V R3F; }
+echo "# decide: the step runs wf"
+# the decision cases (pass, draft, round 2, blocked, failed, none, no commits) and the bundle itself
+# (from a fresh git dir, no hook of a planted global config) are cli/src/executor/decide.rs and
+# cli/tests/executor_red.rs; here only what the step wraps around the CLI
 commit() { ( cd "$W/repo" && echo x >> f && git add f && git -c user.email=t@t -c user.name=t commit -q -m "feat: x" ); }
-newcase; mkrepo; FBASE=$(git -C "$W/repo" rev-parse HEAD); commit
-R1O=done R1V=pass R1F=/r1; final
-[ "$(out action)" = pr ] && [ "$(out rounds)" = 1 ] && [ "$(out ahead)" = 1 ] && ok "final: pass with commits gives pr" || bad "final: pass ($(out action))"
-R1O=done R1V=fail R1F=/r1 R2O=done R2V=fail R2F=/r2 R3O=done R3V=fail R3F=/r3; final
-[ "$(out action)" = draft ] && [ "$(out rounds)" = 3 ] && [ "$(out findings_file)" = /r3 ] && ok "final: three failing rounds give draft with last findings" || bad "final: draft ($(out action) $(out rounds))"
-R1O=done R1V=fail R1F=/r1 R2O=done R2V=pass R2F=/r2; final
-[ "$(out action)" = pr ] && [ "$(out rounds)" = 2 ] && ok "final: pass in round 2 gives pr" || bad "final: round 2 pass"
-R1O=blocked R1V=none R1F=/r1; final
-[ "$(out action)" = comment ] && [ "$(out outcome)" = blocked ] && ok "final: blocked gives comment" || bad "final: blocked"
-R1O=failed R1V=none R1F=/r1; final
-[ "$(out action)" = comment ] && ok "final: failed gives comment" || bad "final: failed"
-R1O=done R1V=fail R1F=/r1 R2O=blocked R2V=none R2F=/r2; final
-[ "$(out action)" = comment ] && [ "$(out findings_file)" = /r2 ] && ok "final: blocked in round 2 gives comment" || bad "final: r2 blocked"
-final; [ "$(out action)" = comment ] && [ "$(out rounds)" = 0 ] && [ "$(out outcome)" = none ] && ok "final: no round ran gives comment" || bad "final: none"
-newcase; mkrepo; FBASE=$(git -C "$W/repo" rev-parse HEAD)
-R1O=done R1V=pass R1F=/r1; final
-[ "$(out action)" = comment ] && [ "$(out ahead)" = 0 ] && ok "final: pass with no commits gives comment" || bad "final: no commits ($(out action))"
+cat > "$W/bin/wf-decide" <<'STUB'
+#!/usr/bin/env bash
+echo "$*" > "$STUB_ARGS"
+env | grep -E '^R[123]_(OUTCOME|VERDICT|FINDINGS)=' | sort >> "$STUB_ARGS"
+echo "action=pr" >> "$GITHUB_OUTPUT"
+exit "${STUB_EXIT:-0}"
+STUB
+chmod +x "$W/bin/wf-decide"
+drun() { STUB_ARGS=$(mktemp "$W/dargs.XXXXXX"); export STUB_ARGS STUB_EXIT=$1
+  ( cd "$W/repo" && WF="$W/bin/wf-decide" BASE=abc123 R1_OUTCOME=done R1_VERDICT=fail R1_FINDINGS=/r1 \
+      R2_OUTCOME=done R2_VERDICT=pass R2_FINDINGS=/r2 R3_OUTCOME= R3_VERDICT= R3_FINDINGS= bash "$W/final.sh" > "$C/stdout" 2>&1 ); FRC=$?; }
+newcase; mkrepo; drun 0
+[ "$FRC" = 0 ] && [ "$(head -1 "$STUB_ARGS")" = "executor decide --base abc123 --work-dir $RUNNER_TEMP --github-output $GITHUB_OUTPUT" ] \
+  && ok "decide step: runs wf executor decide" || bad "decide step: $(head -1 "$STUB_ARGS") ($FRC)"
+grep -qx 'R2_VERDICT=pass' "$STUB_ARGS" && grep -qx 'R3_OUTCOME=' "$STUB_ARGS" && [ "$(grep -c '^R' "$STUB_ARGS")" = 9 ] && ok "decide step: the round outputs reach wf" || bad "decide step: rounds $(cat "$STUB_ARGS")"
+[ "$(out action)" = pr ] && ok "decide step: the CLI's outputs are passed through" || bad "decide step: outputs"
+newcase; mkrepo; drun 4
+[ "$FRC" != 0 ] && ok "decide step: a failing CLI fails the step, so nothing is uploaded" || bad "decide step: failure hidden"
 
 echo "# bundle, publish verify and push"
 # the push goes to a local bare remote in place of the GitHub URL, so the real git runs the hooks and config it reads
 pushcase() { newcase; mkrepo; export STUB_REMOTE=$C/remote.git; git init -q --bare "$STUB_REMOTE"; }
 remote_ref() { git --git-dir="$1" rev-parse -q --verify refs/heads/feat/13-x || true; }
-# the rounds side bundles the commit the Decide step found; the publish side then checks out the base, as its own checkout does
+# the bundle the rounds side hands over, made as `wf executor decide` makes it (a fresh bare git dir,
+# no global or system config); the publish side then checks out the base, as its own checkout does
+mkbundle() { ( export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1; src=$(mktemp -d "$C/src.XXXXXX")
+  git init -q --bare "$src"; GIT_DIR=$src git fetch -q --update-shallow "$W/repo" HEAD:refs/push/head
+  mkdir -p "$C/tmp/bundle"; GIT_DIR=$src git bundle create "$C/tmp/bundle/publish.bundle" refs/push/head "^$FBASE" 2> /dev/null ); }
 bundled() {
-  pushcase; FBASE=$(git -C "$W/repo" rev-parse HEAD); commit; R1O=done R1V=pass R1F=/r1; final
+  pushcase; FBASE=$(git -C "$W/repo" rev-parse HEAD); commit; mkbundle
   mkdir -p "$C/tmp/publish-bundle"; mv "$C/tmp/bundle/publish.bundle" "$C/tmp/publish-bundle/"
   NEWHEAD=$(git -C "$W/repo" rev-parse HEAD); git -C "$W/repo" checkout -q --detach "$FBASE"
 }
 verifyrun() { ( cd "$W/repo" && BUNDLE="$C/tmp/publish-bundle/publish.bundle" GITHUB_REPOSITORY=acme/app bash "$W/Verify_the_bundle.sh" > "$C/stdout" 2>&1 ); }
 pushrun() { ( cd "$W/repo" && GH_TOKEN=tok123 BRANCH=feat/13-x GITHUB_REPOSITORY=acme/app bash "$W/Push_the_branch.sh" > "$C/stdout" 2>&1 ); }
 publish() { verifyrun && pushrun; }
-
-pushcase; FBASE=$(git -C "$W/repo" rev-parse HEAD); commit
-printf '#!/bin/sh\necho ran >> "%s"\n' "$C/marker" > "$W/repo/.git/hooks/pre-push"; chmod +x "$W/repo/.git/hooks/pre-push"
-git -C "$W/repo" config uploadpack.packObjectsHook "touch $C/upload-marker"
-R1O=done R1V=pass R1F=/r1; final
-B=$C/tmp/bundle/publish.bundle
-[ -s "$B" ] && git -C "$W/repo" bundle verify "$B" > /dev/null 2>&1 && git bundle list-heads "$B" | grep -qF "$(git -C "$W/repo" rev-parse HEAD) refs/push/head" && [ ! -e "$C/marker" ] && [ ! -e "$C/upload-marker" ] \
-  && ok "bundle: holds the commit on the base, and no planted hook or config runs" || bad "bundle: $(cat "$C/stdout")"
 
 bundled; publish
 [ "$(remote_ref "$STUB_REMOTE")" = "$NEWHEAD" ] && ok "publish: verifies the bundle and pushes its HEAD under the branch name" || bad "publish: HEAD not pushed ($(remote_ref "$STUB_REMOTE")) $(cat "$C/stdout")"
@@ -175,7 +171,7 @@ rm -rf "$STUB_REMOTE" "$W/repo"; git clone -q --bare "file://$ORIGIN" "$STUB_REM
 [ "$(git -C "$W/repo" rev-parse --is-shallow-repository)" = true ] || bad "publish: the shallow fixture is not shallow"
 FBASE=$(git -C "$W/repo" rev-parse HEAD)
 git -C "$W/repo" -c user.email=t@t -c user.name=t commit -q --allow-empty -m change
-R1O=done R1V=pass R1F=/r1; final
+mkbundle
 mkdir -p "$C/tmp/publish-bundle"; mv "$C/tmp/bundle/publish.bundle" "$C/tmp/publish-bundle/"
 NEWHEAD=$(git -C "$W/repo" rev-parse HEAD); git -C "$W/repo" checkout -q --detach "$FBASE"
 publish
