@@ -1,0 +1,56 @@
+name: setup-cli
+description: Install the pinned Claude Code binary and build the workflows CLI from source
+inputs:
+  path:
+    description: Checkout of this repository at job.workflow_sha; the CLI is built from its cli/
+    required: true
+outputs:
+  wf:
+    description: Path of the built wf binary
+    value: ${{ steps.build.outputs.wf }}
+  claude_dir:
+    description: Directory of the pinned claude binary; put it first on PATH for wf only
+    value: ${{ steps.install.outputs.claude_dir }}
+runs:
+  using: composite
+  steps:
+    # The release binary, checked against the SHA-256 of the GPG-signed release manifest
+    # (downloads.claude.ai/claude-code-releases/<version>/manifest.json, platforms.linux-x64): no
+    # installer script runs and nothing updates it. The CLI runs it as `claude` from PATH; the job puts
+    # its directory on PATH for wf alone rather than through GITHUB_PATH for every later step.
+    - name: Install Claude Code
+      id: install
+      shell: bash
+      env:
+        CLAUDE_CODE_VERSION: 2.1.296
+        CLAUDE_CODE_SHA256: 24972e3bc859fab2b46ed4c1e51f7d6130f06d3bd550811a114640de3370d0de
+        DISABLE_AUTOUPDATER: "1"
+      run: |
+        set -euo pipefail
+        dir="$RUNNER_TEMP/claude-code"
+        mkdir -p "$dir"
+        curl -fsSL -o "$dir/claude" "https://downloads.claude.ai/claude-code-releases/$CLAUDE_CODE_VERSION/linux-x64/claude"
+        echo "$CLAUDE_CODE_SHA256  $dir/claude" | sha256sum -c -
+        chmod +x "$dir/claude"
+        version=$("$dir/claude" --version)
+        case $version in "$CLAUDE_CODE_VERSION "*) ;; *) echo "unexpected claude version: $version" >&2; exit 1 ;; esac
+        echo "claude_dir=$dir" >> "$GITHUB_OUTPUT"
+
+    # Built at the workflow's commit with --locked and no cache (review of #77). `rustup toolchain
+    # install` with no argument installs cli/rust-toolchain.toml's toolchain, which the runner image
+    # does not hold under that name. Both times go to the step summary.
+    - name: Build the CLI
+      id: build
+      shell: bash
+      env:
+        CLI_DIR: ${{ inputs.path }}/cli
+      run: |
+        set -euo pipefail
+        cd "$CLI_DIR"
+        start=$(date +%s)
+        rustup toolchain install --no-self-update
+        echo "- Rust toolchain install: $(( $(date +%s) - start )) s" >> "$GITHUB_STEP_SUMMARY"
+        start=$(date +%s)
+        cargo build --release --locked
+        echo "- CLI build (release, --locked, no cache): $(( $(date +%s) - start )) s" >> "$GITHUB_STEP_SUMMARY"
+        echo "wf=$PWD/target/release/wf" >> "$GITHUB_OUTPUT"

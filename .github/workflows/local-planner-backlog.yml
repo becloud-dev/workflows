@@ -11,8 +11,8 @@ jobs:
       group: planner-backlog
       cancel-in-progress: false
     permissions:
-      contents: read # read the repository
-      issues: read # list open issues with type and issue field values; the report writes nothing
+      contents: read # check out the workflows CLI and prompts
+      issues: read # list open issues with type, issue field values, sub-issues and dependencies; the report writes nothing
     uses: $/.github/workflows/planner-backlog.yml
     with:
       model: claude-haiku-5-5

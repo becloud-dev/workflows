@@ -1,0 +1,5 @@
+# The toolchain of the ubuntu-24.04 runner image, so CI and callers' jobs download none.
+[toolchain]
+channel = "1.99.0"
+profile = "minimal"
+components = ["rustfmt", "clippy"]
