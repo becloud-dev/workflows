@@ -1,5 +1,5 @@
 use becloud_workflows::agent::Agent;
-use becloud_workflows::executor::gate;
+use becloud_workflows::executor::{gate, scope};
 use becloud_workflows::github::Gh;
 use becloud_workflows::planner::backlog;
 use clap::{Parser, Subcommand};
@@ -59,6 +59,23 @@ enum Executor {
         #[arg(long)]
         github_output: PathBuf,
     },
+    /// Check the round's deletions and workflow changes against the plan's Files list.
+    Scope {
+        /// The checkout the round worked in.
+        #[arg(long, default_value = ".")]
+        repo_dir: PathBuf,
+        /// The commit the round started from.
+        #[arg(long)]
+        base: String,
+        #[arg(long)]
+        plan_file: PathBuf,
+        /// The round's results file; the section is appended.
+        #[arg(long)]
+        results: PathBuf,
+        /// The file the step outputs are appended to (`$GITHUB_OUTPUT`).
+        #[arg(long)]
+        github_output: PathBuf,
+    },
 }
 
 fn main() -> ExitCode {
@@ -82,6 +99,13 @@ fn main() -> ExitCode {
                 &github_output,
             )
         }
+        Command::Executor(Executor::Scope {
+            repo_dir,
+            base,
+            plan_file,
+            results,
+            github_output,
+        }) => scope::run(&repo_dir, &base, &plan_file, &results, &github_output),
         Command::Planner(Planner::Backlog { repo, model, out }) => {
             let env: Vec<(String, String)> = std::env::vars().collect();
             backlog::run(

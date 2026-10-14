@@ -2,3 +2,4 @@
 
 pub mod gate;
 pub mod plan;
+pub mod scope;

@@ -118,6 +118,7 @@ jobs:
         continue-on-error: true
         uses: $/.github/actions/dev-round
         with:
+          wf: ${{ steps.cli.outputs.wf }}
           claude_code_oauth_token: ${{ secrets.claude_code_oauth_token }}
           github_token: ${{ github.token }}
           repository: ${{ github.repository }}
@@ -137,6 +138,7 @@ jobs:
         continue-on-error: true
         uses: $/.github/actions/dev-round
         with:
+          wf: ${{ steps.cli.outputs.wf }}
           claude_code_oauth_token: ${{ secrets.claude_code_oauth_token }}
           github_token: ${{ github.token }}
           repository: ${{ github.repository }}
@@ -157,6 +159,7 @@ jobs:
         continue-on-error: true
         uses: $/.github/actions/dev-round
         with:
+          wf: ${{ steps.cli.outputs.wf }}
           claude_code_oauth_token: ${{ secrets.claude_code_oauth_token }}
           github_token: ${{ github.token }}
           repository: ${{ github.repository }}
