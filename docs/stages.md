@@ -72,3 +72,10 @@ HEAD, with a rename counted as a deletion of its old path. A deletion is allowed
 named in the plan's **Files** list, or lies under a listed path that ends in `/`; the comparison is
 literal. A deletion outside the list, or a diff or plan that cannot be read, sets the verdict to fail,
 whatever the check model says. The findings name each path.
+
+## The repository ruleset
+
+Ruleset `main` on `becloud-dev/workflows` (id 25008202) requires a pull request (squash only, no
+approvals), the checks `Workflow tests`, `zizmor audit` and `Rust CLI` from GitHub Actions (not
+strict), and blocks force-push and deletion. Admins bypass on pull requests only. `release-gate` is
+not required until it reports on every pull request.
