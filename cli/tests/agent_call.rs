@@ -3,7 +3,7 @@
 
 mod common;
 
-use becloud_workflows::agent::{Outcome, PASSED_ENV, Request};
+use becloud_workflows::agent::{Outcome, PASSED_ENV, Request, Scope};
 use becloud_workflows::record::RunRecord;
 use common::{Answer, Stubs};
 use serde_json::{Value, json};
@@ -41,6 +41,7 @@ fn call(stubs: &Stubs, rules: &dyn Fn(&Value) -> Vec<String>) -> Outcome {
                 prompt: "Order the issues in input.json.",
                 schema: &schema,
                 files: &files,
+                scope: Scope::READ_ONLY,
             },
             rules,
         )
