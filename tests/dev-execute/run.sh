@@ -90,6 +90,21 @@ unset STUB_WF_OUTPUT
 ! grep -q 'COMMENT_BODY\|github.event.comment' <<< "$(python3 -I -c 'import yaml,sys; d=yaml.safe_load(open(sys.argv[1])); print([s for s in d["jobs"]["dev-execute"]["steps"] if s.get("id")=="gate"][0]["run"])' "$ROOT/.github/workflows/dev-execute.yml")" \
   && ok "gate step: the comment body is not expanded inside the script" || bad "gate step: body in script"
 
+echo "# rounds: the approved plan is read through wf"
+cat > "$W/bin/wf-plan" <<'STUB'
+#!/usr/bin/env bash
+echo "$*" > "$STUB_ARGS"
+exit "${STUB_EXIT:-0}"
+STUB
+chmod +x "$W/bin/wf-plan"
+prun() { STUB_ARGS=$(mktemp "$W/pargs.XXXXXX"); export STUB_ARGS STUB_EXIT=$1
+  ( cd "$W/repo" && WF="$W/bin/wf-plan" ISSUE=13 PLAN_COMMENT_ID=41 PLAN_SHA256=abc GH_TOKEN=x bash "$W/plan.sh" > "$C/stdout" 2>&1 ); PRC=$?; }
+newcase; mkrepo; prun 0
+[ "$PRC" = 0 ] && [ "$(cat "$STUB_ARGS")" = "executor plan --repo acme/app --issue 13 --plan-comment-id 41 --plan-sha256 abc --plan-file $RUNNER_TEMP/plan.md" ] \
+  && [ "$(out plan_file)" = "$RUNNER_TEMP/plan.md" ] && ok "rounds: read the pinned plan and hand its file to the rounds" || bad "rounds: plan step $(cat "$STUB_ARGS") ($PRC)"
+newcase; mkrepo; prun 1
+[ "$PRC" != 0 ] && [ -z "$(out plan_file)" ] && ok "rounds: a plan changed after the approval fails the job before any round" || bad "rounds: changed plan not stopped"
+
 echo "# decide: the step runs wf"
 # the decision cases (pass, draft, round 2, blocked, failed, none, no commits) and the bundle itself
 # (from a fresh git dir, no hook of a planted global config) are cli/src/executor/decide.rs and
@@ -203,9 +218,10 @@ d = yaml.safe_load(open(sys.argv[1]))
 rp = yaml.safe_load(open(sys.argv[2]))
 wc = (d.get("on") or d.get(True))["workflow_call"]
 jobs = d["jobs"]
+gj = jobs.get("dev-gate", {"steps": []})      # the approval gate
 rj = jobs["dev-execute"]                      # the rounds job
 pj = jobs.get("dev-publish", {"steps": []})   # the publish job
-rs, ps = rj["steps"], pj["steps"]
+gs, rs, ps = gj["steps"], rj["steps"], pj["steps"]
 def emit(ok, name): print(("ok|" if ok else "bad|") + name)
 uses = lambda s: str(s.get("uses", ""))
 is_mint = lambda s: uses(s).startswith("actions/create-github-app-token@")
@@ -225,6 +241,8 @@ uploads = [s for s in rs if uses(s).startswith("actions/upload-artifact@") and "
 downloads = [s for s in ps if uses(s).startswith("actions/download-artifact@")]
 runs = [s.get("run", "") for s in ps]
 refs = set(re.findall(r"needs\.dev-execute\.outputs\.(\w+)", json.dumps(ps)))
+grefs = set(re.findall(r"needs\.dev-gate\.outputs\.(\w+)", json.dumps(ps)))
+gouts = set(gj.get("outputs", {}))
 
 # job separation: the token is minted and used only by the publish job, which runs no round code
 emit(len(mints) == 1 and not any(is_mint(s) for n in others.values() for s in n["steps"]),
@@ -236,17 +254,28 @@ emit("executor_app_private_key" not in json.dumps(others),
      "split: the rounds job has no executor key and no App token step")
 emit(rj.get("permissions") == {"contents": "read", "issues": "write"},
      "split: the rounds job holds contents read and issues write only")
-emit(pj.get("needs") == "dev-execute" and "needs.dev-execute.outputs.action == 'pr'" in pcond
+emit(pj.get("needs") == ["dev-gate", "dev-execute"] and "needs.dev-execute.outputs.action == 'pr'" in pcond
      and "needs.dev-execute.outputs.action == 'draft'" in pcond,
-     "publish: needs the rounds job and runs only for a pr or draft action")
+     "publish: needs the gate and the rounds job and runs only for a pr or draft action")
 emit(pj.get("permissions") == {"contents": "read", "issues": "read"}, "publish: contents read and issues read only")
 emit(re.search(r"^\s+issues: read # \S", open(sys.argv[1]).read(), re.M) is not None, "publish: issues read carries a reason")
-emit(outs == {"action", "verdict", "rounds", "branch", "ctype", "plan_url", "plan_comment_id", "plan_sha256", "base"},
-     "publish: the rounds job hands over only the scalar outputs")
+emit(outs == {"action", "verdict", "rounds"},
+     "publish: the rounds job hands over only its result, not the pin, the branch or the base")
+emit(gouts == {"ok", "branch", "ctype", "plan_url", "plan_comment_id", "plan_sha256", "base"},
+     "gate: hands over the approval, the branch and the pin")
+emit(not any(is_round(s) or is_claude(s) for s in gs)
+     and not re.search(r"inputs\.(setup|check|test)_command|claude_code_oauth_token|executor_app", json.dumps(gs)),
+     "gate: runs no round, model, consumer command or App token step")
+emit(gj.get("permissions") == {"contents": "read", "issues": "write"} and "github.event.sender.login" in str(gj.get("if", "")),
+     "gate: checks the sender, holds contents read and issues write only")
+emit(rj.get("needs") == "dev-gate" and "needs.dev-gate.outputs.ok == 'true'" in str(rj.get("if", "")),
+     "rounds: run only after an approval")
+emit(any("executor plan " in s.get("run", "") for s in rs) and not any("executor gate " in s.get("run", "") for s in rs),
+     "rounds: read the pinned plan with wf executor plan, not a gate of their own")
 emit(len(uploads) == 1 and len(downloads) == 1 and downloads[0].get("with", {}).get("name") == uploads[0]["with"]["name"],
      "publish: downloads only the bundle the rounds job uploads")
-emit(refs <= outs and not re.search(r"needs\.(?!dev-execute\.outputs\.)", json.dumps(ps)),
-     "publish: reads only the declared outputs of the rounds job")
+emit(refs <= outs and grefs <= gouts and not re.search(r"needs\.(?!(dev-execute|dev-gate)\.outputs\.)", json.dumps(ps)),
+     "publish: reads only the declared outputs of the gate and the rounds job")
 emit(not any(re.search(r"\b(source|eval)\b|BASH_ENV|GITHUB_ENV|GITHUB_PATH", r) for r in runs),
      "publish: no step sources, evaluates or reads an environment file")
 emit(0 <= pos("Verify the bundle") < pos("Mint the executor App token"),
@@ -256,11 +285,11 @@ emit(0 <= pos("Verify the bundle") < pos("Check the bundle against the plan") < 
      "publish: checks the bundle against the plan after verifying it and before minting the token")
 # the check reads the plan from the comment the gate pinned (ID, hash) and the base; never the verdict or
 # any other output of the rounds job
-plan_refs = set(re.findall(r"needs\.dev-execute\.outputs\.(\w+)", json.dumps(plan_step)))
+plan_refs = set(re.findall(r"needs\.dev-gate\.outputs\.(\w+)", json.dumps(plan_step)))
 emit(plan_step != {} and "verdict" not in json.dumps(plan_step).lower()
      and plan_refs == {"plan_comment_id", "plan_sha256", "base"}
-     and re.search(r"needs\.(?!dev-execute\.outputs\.)", json.dumps(plan_step)) is None,
-     "publish: the plan check reads only the pin and the base from the rounds job, not its verdict")
+     and re.search(r"needs\.(?!dev-gate\.outputs\.)", json.dumps(plan_step)) is None,
+     "publish: the plan check reads only the gate's pin and base, nothing of the rounds job")
 
 # the token: scope, use and pinning
 emit(bool(mint.get("id")) and all(
@@ -269,15 +298,16 @@ emit(bool(mint.get("id")) and all(
 w = mint.get("with", {})
 scoped = {k: v for k, v in w.items() if k.startswith("permission-")}
 emit(scoped == {"permission-contents": "write", "permission-pull-requests": "write",
-                "permission-workflows": "write"},
-     "app: token scope is contents, pull-requests and workflows write only")
+                "permission-workflows": "${{ steps.check.outputs.workflows == 'true' && 'write' || '' }}"}
+     and plan_step.get("id") == "check",
+     "app: token scope is contents and pull-requests write, workflows write only when the plan check says so")
 users = sorted(s.get("name") for s in ps if s is not mint and ref in json.dumps(s))
 emit(users == sorted(push_pr), "app: only the push and PR steps reference the token")
 rp_pins = {s["uses"] for j in rp["jobs"].values() for s in j["steps"] if is_mint(s)}
 emit(mint.get("uses") in rp_pins, "app: same pinned action as release-please")
 emit(all(re.fullmatch(r"[^@]+@[0-9a-f]{40}", u) for u in
-         [uses(s) for s in rs + ps if uses(s) and not uses(s).startswith(("$/", "./"))]),
-     "pins: every action in the two jobs is pinned to a full commit SHA")
+         [uses(s) for s in gs + rs + ps if uses(s) and not uses(s).startswith(("$/", "./"))]),
+     "pins: every action in the three jobs is pinned to a full commit SHA")
 emit("executor_app_private_key" in wc.get("secrets", {})
      and wc["secrets"]["executor_app_private_key"].get("required") is True
      and wc.get("inputs", {}).get("executor_app_client_id", {}).get("required") is True,

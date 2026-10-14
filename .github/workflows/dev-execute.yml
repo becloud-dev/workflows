@@ -46,18 +46,18 @@ on:
 permissions: {}
 
 jobs:
-  dev-execute:
-    name: Development execution
+  # the approval and the plan pin: no model code and no consumer command run in this job, so nothing the
+  # rounds do can change what publish later compares against (#65)
+  dev-gate:
+    name: Development approval
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 15
     if: contains(format(',{0},', inputs.owners), format(',{0},', github.event.sender.login))
     permissions:
-      contents: read # check out the repository and the prompts
-      issues: write # comment
+      contents: read # check out the caller repository for the base commit, and the CLI source
+      issues: write # reply on the issue when the approval is refused
     outputs:
-      action: ${{ steps.final.outputs.action }}
-      verdict: ${{ steps.final.outputs.verdict }}
-      rounds: ${{ steps.final.outputs.rounds }}
+      ok: ${{ steps.gate.outputs.ok }}
       branch: ${{ steps.gate.outputs.branch }}
       ctype: ${{ steps.gate.outputs.ctype }}
       plan_url: ${{ steps.gate.outputs.plan_url }}
@@ -101,21 +101,69 @@ jobs:
             echo "base=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Create the branch
-        if: steps.gate.outputs.ok == 'true'
+  dev-execute:
+    name: Development execution
+    needs: dev-gate
+    if: needs.dev-gate.outputs.ok == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read # check out the repository and the prompts
+      issues: write # comment
+    outputs:
+      action: ${{ steps.final.outputs.action }}
+      verdict: ${{ steps.final.outputs.verdict }}
+      rounds: ${{ steps.final.outputs.rounds }}
+    steps:
+      # the commit the gate approved, so the rounds and publish start from the same base (#59)
+      - name: Check out the caller repository at the approved base
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.dev-gate.outputs.base }}
+          persist-credentials: false
+
+      - name: Check out the shared workflows
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .ai-workflows
+          persist-credentials: false
+
+      - name: Set up the CLI
+        id: cli
+        uses: $/.github/actions/setup-cli
+        with:
+          path: .ai-workflows
+
+      # the plan comment the gate pinned, refused when it changed in between
+      - name: Read the approved plan
+        id: plan
         env:
-          BRANCH: ${{ steps.gate.outputs.branch }}
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ github.event.issue.number }}
+          PLAN_COMMENT_ID: ${{ needs.dev-gate.outputs.plan_comment_id }}
+          PLAN_SHA256: ${{ needs.dev-gate.outputs.plan_sha256 }}
+          WF: ${{ steps.cli.outputs.wf }}
+        run: |
+          set -euo pipefail
+          "$WF" executor plan --repo "$GITHUB_REPOSITORY" --issue "$ISSUE" --plan-comment-id "$PLAN_COMMENT_ID" \
+            --plan-sha256 "$PLAN_SHA256" --plan-file "$RUNNER_TEMP/plan.md"
+          echo "plan_file=$RUNNER_TEMP/plan.md" >> "$GITHUB_OUTPUT"
+
+      - name: Create the branch
+        env:
+          BRANCH: ${{ needs.dev-gate.outputs.branch }}
         run: git switch -c "$BRANCH"
 
       - name: Set up
-        if: steps.gate.outputs.ok == 'true' && inputs.setup_command != ''
+        if: inputs.setup_command != ''
         env:
           SETUP: ${{ inputs.setup_command }}
         run: bash -c "$SETUP"
 
       - name: Round 1
         id: r1
-        if: steps.gate.outputs.ok == 'true'
         continue-on-error: true
         uses: $/.github/actions/dev-round
         with:
@@ -125,8 +173,8 @@ jobs:
           repository: ${{ github.repository }}
           issue: ${{ github.event.issue.number }}
           round: "1"
-          base: ${{ steps.gate.outputs.base }}
-          plan_file: ${{ steps.gate.outputs.plan_file }}
+          base: ${{ needs.dev-gate.outputs.base }}
+          plan_file: ${{ steps.plan.outputs.plan_file }}
           execute_model: ${{ inputs.execute_model }}
           check_model: ${{ inputs.check_model }}
           check_command: ${{ inputs.check_command }}
@@ -145,8 +193,8 @@ jobs:
           repository: ${{ github.repository }}
           issue: ${{ github.event.issue.number }}
           round: "2"
-          base: ${{ steps.gate.outputs.base }}
-          plan_file: ${{ steps.gate.outputs.plan_file }}
+          base: ${{ needs.dev-gate.outputs.base }}
+          plan_file: ${{ steps.plan.outputs.plan_file }}
           findings_file: ${{ steps.r1.outputs.findings_file }}
           execute_model: ${{ inputs.execute_model }}
           check_model: ${{ inputs.check_model }}
@@ -166,8 +214,8 @@ jobs:
           repository: ${{ github.repository }}
           issue: ${{ github.event.issue.number }}
           round: "3"
-          base: ${{ steps.gate.outputs.base }}
-          plan_file: ${{ steps.gate.outputs.plan_file }}
+          base: ${{ needs.dev-gate.outputs.base }}
+          plan_file: ${{ steps.plan.outputs.plan_file }}
           findings_file: ${{ steps.r2.outputs.findings_file }}
           execute_model: ${{ inputs.execute_model }}
           check_model: ${{ inputs.check_model }}
@@ -177,9 +225,9 @@ jobs:
 
       - name: Decide what to publish
         id: final
-        if: always() && steps.gate.outputs.ok == 'true'
+        if: always()
         env:
-          BASE: ${{ steps.gate.outputs.base }}
+          BASE: ${{ needs.dev-gate.outputs.base }}
           R1_OUTCOME: ${{ steps.r1.outputs.outcome }}
           R1_VERDICT: ${{ steps.r1.outputs.verdict }}
           R1_FINDINGS: ${{ steps.r1.outputs.findings_file }}
@@ -230,7 +278,7 @@ jobs:
           gh issue comment "$ISSUE" --body-file "$RUNNER_TEMP/findings.md"
 
       - name: Upload the records
-        if: always() && steps.gate.outputs.ok == 'true'
+        if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: run-record-${{ github.run_id }}-${{ github.run_attempt }}
@@ -244,7 +292,7 @@ jobs:
   # a bundle that changes a workflow or deletes a file the plan does not name, before the executor token is minted.
   dev-publish:
     name: Development publication
-    needs: dev-execute
+    needs: [dev-gate, dev-execute]
     if: needs.dev-execute.outputs.action == 'pr' || needs.dev-execute.outputs.action == 'draft'
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -256,7 +304,7 @@ jobs:
       - name: Check out the caller repository at the rounds' base
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ needs.dev-execute.outputs.base }}
+          ref: ${{ needs.dev-gate.outputs.base }}
           persist-credentials: false
 
       - name: Check out the shared workflows
@@ -298,18 +346,19 @@ jobs:
 
       # the plan comment is read again by the ID the gate pinned and must hash to what was approved (#65)
       - name: Check the bundle against the plan
+        id: check
         env:
           GH_TOKEN: ${{ github.token }}
           ISSUE: ${{ github.event.issue.number }}
-          PLAN_COMMENT_ID: ${{ needs.dev-execute.outputs.plan_comment_id }}
-          PLAN_SHA256: ${{ needs.dev-execute.outputs.plan_sha256 }}
-          BASE: ${{ needs.dev-execute.outputs.base }}
+          PLAN_COMMENT_ID: ${{ needs.dev-gate.outputs.plan_comment_id }}
+          PLAN_SHA256: ${{ needs.dev-gate.outputs.plan_sha256 }}
+          BASE: ${{ needs.dev-gate.outputs.base }}
           WF: ${{ steps.cli.outputs.wf }}
         run: |
           set -euo pipefail
           "$WF" executor publish-check --repo "$GITHUB_REPOSITORY" --issue "$ISSUE" \
             --plan-comment-id "$PLAN_COMMENT_ID" --plan-sha256 "$PLAN_SHA256" --base "$BASE" \
-            --git-dir "$RUNNER_TEMP/publish.git"
+            --git-dir "$RUNNER_TEMP/publish.git" --github-output "$GITHUB_OUTPUT"
 
       - name: Mint the executor App token
         id: executor_app
@@ -319,12 +368,14 @@ jobs:
           private-key: ${{ secrets.executor_app_private_key }}
           permission-contents: write
           permission-pull-requests: write
-          permission-workflows: write
+          # only when the bundle adds, changes or deletes a file under .github/workflows; an empty value
+          # requests nothing (the action skips it), and contents and pull-requests are always named
+          permission-workflows: ${{ steps.check.outputs.workflows == 'true' && 'write' || '' }}
 
       - name: Push the branch
         env:
           GH_TOKEN: ${{ steps.executor_app.outputs.token }}
-          BRANCH: ${{ needs.dev-execute.outputs.branch }}
+          BRANCH: ${{ needs.dev-gate.outputs.branch }}
         run: |
           set -euo pipefail
           # push from the fresh git dir the verify step fetched the bundle into, so the checkout's hooks and config are not read
@@ -334,9 +385,9 @@ jobs:
       - name: Open the pull request
         env:
           GH_TOKEN: ${{ steps.executor_app.outputs.token }}
-          BRANCH: ${{ needs.dev-execute.outputs.branch }}
-          CTYPE: ${{ needs.dev-execute.outputs.ctype }}
-          PLAN_URL: ${{ needs.dev-execute.outputs.plan_url }}
+          BRANCH: ${{ needs.dev-gate.outputs.branch }}
+          CTYPE: ${{ needs.dev-gate.outputs.ctype }}
+          PLAN_URL: ${{ needs.dev-gate.outputs.plan_url }}
           ISSUE: ${{ github.event.issue.number }}
           TITLE: ${{ github.event.issue.title }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}

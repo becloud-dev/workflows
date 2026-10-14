@@ -8,7 +8,8 @@ file in the same pull request; `tests/dev-execute/run.sh` checks that every work
 | --- | --- | --- | --- |
 | `triage.yml` | Set type and priority, comment, label, create sub-issues | GITHUB_TOKEN | contents read, issues write |
 | `dev-plan.yml` | Post the development plan | GITHUB_TOKEN | contents read, issues write |
-| `dev-execute.yml` | Read the approval, run the rounds and the check, post the findings | GITHUB_TOKEN | contents read, issues write |
+| `dev-execute.yml` | Read the approval and pin the plan, reply when it is refused | GITHUB_TOKEN | contents read, issues write |
+| `dev-execute.yml` | Run the rounds and the check, post the findings | GITHUB_TOKEN | contents read, issues write |
 | `dev-execute.yml` | Push the branch and open the pull request | executor App | contents write, pull-requests write, workflows write |
 | `dev-execute.yml` | Report a publication that failed or was refused | GITHUB_TOKEN | issues write |
 | `release-please.yml` | Open and update the release pull request, tag the release | release App | contents write, issues write, pull-requests write |
@@ -47,22 +48,26 @@ metadata read.
 | Secret | `EXECUTOR_APP_PRIVATE_KEY` |
 | Variable | `EXECUTOR_APP_CLIENT_ID` |
 
-`dev-execute.yml` runs in three jobs on three runners. The `dev-execute` job runs the gate, the rounds,
-the check and the findings comment. The gate (`wf executor gate`) pins the plan it approves: the
-plan comment's ID and the SHA-256 of its body, written to job outputs before any round code runs.
-When the outcome is a pull request or a draft, the job bundles the commits from the base to HEAD
-and uploads the bundle as an artifact. The `dev-publish` job runs only for a pull request or a
-draft. It checks out the commit the rounds started from (the output `base`, not the default branch
-as it is now), takes the bundle and the job outputs, verifies the bundle and checks that its
-history reaches that commit. `wf executor publish-check` then reads the plan comment again by the
-pinned ID and refuses a comment whose body hash differs, whose author is not the bot, or that is
-not on the issue; only then does it judge the bundle's deletions and workflow changes against the
-plan's **Files** list. Only after that does the job mint the token, push and open the pull
-request. The `dev-report` job holds only `issues: write`, runs no model code, no checkout and no
-consumer command, and comments on the issue when `dev-publish` failed, which includes a refusal.
+`dev-execute.yml` runs in four jobs on four runners. The `dev-gate` job runs no model code and no
+consumer command: `wf executor gate` reads the `/approve` comment and the issue, replies when it
+refuses, and pins the plan it approves (the plan comment's ID and the SHA-256 of its body) with the
+commit it saw as the base. The `dev-execute` job starts only after an approval, checks out that
+base, reads the plan again by the pinned ID (`wf executor plan` refuses a body whose hash
+differs), and runs the rounds, the check and the findings comment. When the outcome is a pull
+request or a draft, it bundles the commits from the base to HEAD from a fresh git dir and uploads
+the bundle as an artifact; its outputs are only `action`, `verdict` and `rounds`. The `dev-publish`
+job runs only for a pull request or a draft. It checks out the base, takes the bundle, verifies it
+and checks that its history reaches the base. `wf executor publish-check` then reads the plan
+comment by the gate's pin and refuses a comment whose body hash differs, whose author is not the
+bot, or that is not on the issue; only then does it judge the bundle's deletions and workflow
+changes against the plan's **Files** list. Only after that does the job mint the token, push and
+open the pull request. The `dev-report` job holds only `issues: write`, runs no model code, no
+checkout and no consumer command, and comments on the issue when `dev-publish` failed, which
+includes a refusal.
 
 The token is minted once per run, in the `dev-publish` job, and is scoped to the current repository
-with exactly the three permissions above. It is used by the push step and the pull request step. No
+with contents and pull requests write, and workflows write only when the bundle adds, changes or
+deletes a file under `.github/workflows` (the publish check says so). It is used by the push step and the pull request step. No
 step of the `dev-execute` job receives the executor key or the token, and no step of `dev-publish`
 runs the model, the setup, the check or the test commands. Environment files that the rounds write
 stay on the rounds runner, so they never reach the push or the pull request step.

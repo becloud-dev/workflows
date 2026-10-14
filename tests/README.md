@@ -26,6 +26,7 @@ test here; their cases are those cargo tests.
 | `dev-plan-post` | "Post the plan" of `dev-plan.yml`: structure, security links, refusal comment |
 | `dev-publish-scope` | "Check the bundle against the plan" of `dev-publish`: its call to `wf executor publish-check` with the gate's pin, and that a refusal or a CLI that cannot run fails the step |
 | `dev-round` | tools and commands steps of the `dev-round` composite; the verdict step's call to `wf` and its fallback to a failed round |
+| `dev-round-scope` | the scope step's call to `wf executor scope`; a failing or missing CLI leaves `scope_state=error` |
 | `dev-round-red` | the red step's call to `wf executor red`; a failing CLI leaves `red_state=error` |
 | `planner-backlog` | "Plan the backlog" of `planner-backlog.yml` (wf's exit status is the step's, the summary and the record reach the step summary) and the `setup-cli` composite (the Claude Code binary is used only when its SHA-256 and version match; the toolchain is installed explicitly, then the CLI is built `--release --locked`) |
 | `record-run` | what a run record holds and how it is named |
