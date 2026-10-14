@@ -53,6 +53,25 @@ runner.
 
 Each step moves to the CLI as its own increment and its own release. The executor goes alone.
 
+Each step has a review issue that holds the accepted review; its open sub-issues stay open.
+
+| Step | Review issue | Open sub-issues |
+| --- | --- | --- |
+| triage | #67 | none |
+| dev-plan | #66 | #20, #21, #34, #42 |
+| dev-execute, rounds | #68 | #35, #53, #54, #57 (#47 and #62 closed: done, duplicate of #57) |
+| dev-execute, publish | #69 | #56, #59, #63, #65 (#46 and #52 closed) |
+| release-please | #70 | none |
+| release-review | #71 | none |
+| release-issues | #72 | none |
+| release-gate | #73 | none |
+| planner-backlog | #74 | #16 (stays open until the CLI planner ships) |
+| planner-roadmap | #75 | none |
+| ux-ui | #76 | none |
+| ci | #77 | the consumer `pr-checks.yml` gap (#79) |
+
+#78 (agent calls loaded the checkout's hooks) was fixed on `v0` with `--setting-sources user`.
+
 | Step | Commands | What moves |
 | --- | --- | --- |
 | triage | `triage format-check` and the classify, split and rewrite calls | The CLI fetches the issue so the agent has `Read` only and no token; it verifies a rewrite keeps every word and reads back its writes |
@@ -71,7 +90,7 @@ Each step moves to the CLI as its own increment and its own release. The executo
 Each runs on a real runner on `workflows`, fails against `v0` and passes against the CLI executor:
 - Forged plan (#65): the rounds of an approved plan post or edit a `<!-- dev-plan -->` comment; the
   publish job must publish the plan that was approved.
-- `BASH_ENV` (#56): the check or test command writes `BASH_ENV` and a `PATH` entry to
+- `BASH_ENV` (#55, #56, #61): the check or test command writes `BASH_ENV` and a `PATH` entry to
   `GITHUB_ENV` and `GITHUB_PATH`; no later step of the publish job may run the injected file.
 
 ### Storage backend
