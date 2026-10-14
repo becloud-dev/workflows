@@ -2,4 +2,5 @@
 
 pub mod gate;
 pub mod plan;
+pub mod publish;
 pub mod scope;

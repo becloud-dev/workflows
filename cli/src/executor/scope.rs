@@ -67,12 +67,27 @@ pub fn check(files: Option<&[String]>, deleted: &[String], changed: &[String]) -
     Report { state, violations }
 }
 
-/// The paths `git diff` lists with `-z` for `args`, run in `dir`; `None` when git fails.
-fn diff_names(dir: &Path, args: &[&str]) -> Option<Vec<String>> {
-    let out = Command::new("git")
-        .current_dir(dir)
+/// Where the history to diff lives.
+pub enum Repo<'a> {
+    /// A working checkout.
+    Checkout(&'a Path),
+    /// A bare git directory, such as the one a bundle was fetched into.
+    GitDir(&'a Path),
+}
+
+/// The paths `git diff` lists with `-z` for `args`; `None` when git fails. No global or system
+/// git config is read, so the answer does not depend on the runner's or the rounds' settings.
+fn diff_names(repo: &Repo, args: &[&str]) -> Option<Vec<String>> {
+    let mut cmd = Command::new("git");
+    match repo {
+        Repo::Checkout(dir) => cmd.current_dir(dir),
+        Repo::GitDir(dir) => cmd.arg("--git-dir").arg(dir),
+    };
+    let out = cmd
         .args(["diff", "--name-only", "--no-renames", "-z"])
         .args(args)
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .env("GIT_CONFIG_NOSYSTEM", "1")
         .output()
         .ok()?;
     if !out.status.success() {
@@ -85,6 +100,18 @@ fn diff_names(dir: &Path, args: &[&str]) -> Option<Vec<String>> {
             .map(|p| String::from_utf8_lossy(p).into_owned())
             .collect(),
     )
+}
+
+/// The deleted paths, and the added or modified paths under `.github/workflows`, between `base`
+/// and `tip` (a merge-base diff, as for a pull request); `None` when either diff cannot be read.
+pub fn changes(repo: &Repo, base: &str, tip: &str) -> Option<(Vec<String>, Vec<String>)> {
+    let range = format!("{base}...{tip}");
+    let deleted = diff_names(repo, &["--diff-filter=D", &range])?;
+    let changed = diff_names(
+        repo,
+        &["--diff-filter=AM", &range, "--", ".github/workflows"],
+    )?;
+    Some((deleted, changed))
 }
 
 /// What the round's results file gets for a report.
@@ -144,14 +171,8 @@ pub fn run(
     let files = std::fs::read_to_string(plan_file)
         .ok()
         .and_then(|plan| plan::files(&plan).ok());
-    let range = format!("{base}...HEAD");
-    let deleted = diff_names(repo_dir, &["--diff-filter=D", &range]);
-    let changed = diff_names(
-        repo_dir,
-        &["--diff-filter=AM", &range, "--", ".github/workflows"],
-    );
-    let report = match (files, deleted, changed) {
-        (Some(f), Some(d), Some(c)) => check(Some(&f), &d, &c),
+    let report = match (files, changes(&Repo::Checkout(repo_dir), base, "HEAD")) {
+        (Some(f), Some((d, c))) => check(Some(&f), &d, &c),
         _ => check(None, &[], &[]),
     };
     let mut r = std::fs::OpenOptions::new()

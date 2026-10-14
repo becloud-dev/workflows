@@ -1,5 +1,5 @@
 use becloud_workflows::agent::Agent;
-use becloud_workflows::executor::{gate, scope};
+use becloud_workflows::executor::{gate, publish, scope};
 use becloud_workflows::github::Gh;
 use becloud_workflows::planner::backlog;
 use clap::{Parser, Subcommand};
@@ -76,6 +76,26 @@ enum Executor {
         #[arg(long)]
         github_output: PathBuf,
     },
+    /// Judge a bundle against the plan that was approved, before anything is pushed.
+    PublishCheck {
+        /// owner/repo
+        #[arg(long)]
+        repo: String,
+        #[arg(long)]
+        issue: u64,
+        /// The comment ID the gate pinned.
+        #[arg(long)]
+        plan_comment_id: u64,
+        /// The body hash the gate pinned.
+        #[arg(long)]
+        plan_sha256: String,
+        /// The commit the rounds started from.
+        #[arg(long)]
+        base: String,
+        /// The bare git directory the bundle was fetched into (`refs/push/head` is its tip).
+        #[arg(long)]
+        git_dir: PathBuf,
+    },
 }
 
 fn main() -> ExitCode {
@@ -106,6 +126,24 @@ fn main() -> ExitCode {
             results,
             github_output,
         }) => scope::run(&repo_dir, &base, &plan_file, &results, &github_output),
+        Command::Executor(Executor::PublishCheck {
+            repo,
+            issue,
+            plan_comment_id,
+            plan_sha256,
+            base,
+            git_dir,
+        }) => publish::run(
+            &Gh::from_env(),
+            &repo,
+            issue,
+            &publish::Pin {
+                comment_id: plan_comment_id,
+                sha256: &plan_sha256,
+            },
+            &base,
+            &git_dir,
+        ),
         Command::Planner(Planner::Backlog { repo, model, out }) => {
             let env: Vec<(String, String)> = std::env::vars().collect();
             backlog::run(
