@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/becloud-dev/workflows/compare/v0.2.1...v0.3.0) (2026-10-14)
+
+
+### Features
+
+* **cli:** move the backlog planner to the rust cli ([#83](https://github.com/becloud-dev/workflows/issues/83)) ([fbbf1f7](https://github.com/becloud-dev/workflows/commit/fbbf1f7bbb1702ad98b125a647026352dda0f203)), closes [#82](https://github.com/becloud-dev/workflows/issues/82)
+
 ## [0.2.1](https://github.com/becloud-dev/workflows/compare/v0.2.0...v0.2.1) (2026-10-13)
 
 
