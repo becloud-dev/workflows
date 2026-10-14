@@ -32,8 +32,9 @@ jobs:
         run: bash tests/run-all.sh
 
   # The Rust CLI under cli/: format, lints, tests and the dependency policy on every pull request, so the
-  # ruleset can require the check. The toolchain is cli/rust-toolchain.toml's (rustup installs it when the
-  # runner image lacks it); cargo-deny is a pinned release binary checked against its SHA-256.
+  # ruleset can require the check. The toolchain is cli/rust-toolchain.toml's, installed explicitly (the
+  # runner image does not hold it under that name); cargo-deny is a pinned release binary checked against
+  # its SHA-256.
   cli:
     name: Rust CLI
     runs-on: ubuntu-latest
@@ -52,8 +53,9 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Show the toolchain
+      - name: Install the toolchain
         run: |
+          rustup toolchain install --no-self-update
           rustup show active-toolchain
           cargo --version
 

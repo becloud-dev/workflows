@@ -25,7 +25,7 @@ against stub `claude` and `gh` (`cli/tests/bin`) answering with recorded real ou
 | `dev-publish-scope` | "Check the bundle against the plan" of `dev-execute.yml`'s `dev-publish`: unnamed workflow changes and deletions are refused, the plan is read from its comment, fail closed, the rounds' outputs and a hostile environment do not change the decision |
 | `dev-round` | tools, commands and verdict steps of the `dev-round` composite |
 | `dev-round-red` | the red check: new tests must fail on the base tree |
-| `planner-backlog` | "Plan the backlog" of `planner-backlog.yml` (wf's exit status is the step's, the summary and the record reach the step summary) and the `setup-cli` composite (the Claude Code binary is used only when its SHA-256 and version match; the CLI is built `--release --locked`) |
+| `planner-backlog` | "Plan the backlog" of `planner-backlog.yml` (wf's exit status is the step's, the summary and the record reach the step summary) and the `setup-cli` composite (the Claude Code binary is used only when its SHA-256 and version match; the toolchain is installed explicitly, then the CLI is built `--release --locked`) |
 | `record-run` | what a run record holds and how it is named |
 | `release-config` | the release-please config of the repository and the consumer template: `bump-minor-pre-major` is set, the manifest is still 0.x |
 | `release-gate` | owner label, blockers, stale or edited review; also mutates the step |

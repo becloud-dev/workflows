@@ -36,9 +36,9 @@ runs:
         case $version in "$CLAUDE_CODE_VERSION "*) ;; *) echo "unexpected claude version: $version" >&2; exit 1 ;; esac
         echo "claude_dir=$dir" >> "$GITHUB_OUTPUT"
 
-    # Built at the workflow's commit with --locked and no cache (review of #77); rustup takes the
-    # toolchain from cli/rust-toolchain.toml in the working directory. The build time goes to the
-    # step summary.
+    # Built at the workflow's commit with --locked and no cache (review of #77). `rustup toolchain
+    # install` with no argument installs cli/rust-toolchain.toml's toolchain, which the runner image
+    # does not hold under that name. Both times go to the step summary.
     - name: Build the CLI
       id: build
       shell: bash
@@ -47,6 +47,9 @@ runs:
       run: |
         set -euo pipefail
         cd "$CLI_DIR"
+        start=$(date +%s)
+        rustup toolchain install --no-self-update
+        echo "- Rust toolchain install: $(( $(date +%s) - start )) s" >> "$GITHUB_STEP_SUMMARY"
         start=$(date +%s)
         cargo build --release --locked
         echo "- CLI build (release, --locked, no cache): $(( $(date +%s) - start )) s" >> "$GITHUB_STEP_SUMMARY"

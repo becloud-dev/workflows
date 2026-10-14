@@ -77,15 +77,14 @@ grep -Eq '^        CLAUDE_CODE_VERSION: [0-9]+\.[0-9]+\.[0-9]+$' "$ROOT/.github/
   && grep -Eq '^        CLAUDE_CODE_SHA256: [0-9a-f]{64}$' "$ROOT/.github/actions/setup-cli/action.yml" && ok || bad "the pins are not a version and a SHA-256"
 
 # --- Build the CLI: --release --locked in the CLI directory; wf's path is the step output.
-cat > "$H/bin/cargo" <<'EOF'
-#!/usr/bin/env bash
-echo "$PWD $*" > "$CARGO_LOG"
-EOF
-chmod +x "$H/bin/cargo"
+for tool in cargo rustup; do
+  printf '#!/usr/bin/env bash\necho "%s $PWD $*" >> "$TOOL_LOG"\n' "$tool" > "$H/bin/$tool"; chmod +x "$H/bin/$tool"
+done
 fresh; mkdir -p "$T/src/cli"
-CARGO_LOG=$T/cargo.log CLI_DIR=$T/src/cli PATH="$H/bin:$PATH" bash "$H/build.sh" > /dev/null 2>&1; RC=$?
-[ "$RC" = 0 ] && [ "$(cat "$T/cargo.log")" = "$T/src/cli build --release --locked" ] && ok || bad "cargo call: $(cat "$T/cargo.log" 2>/dev/null) (rc $RC)"
+TOOL_LOG=$T/tools.log CLI_DIR=$T/src/cli PATH="$H/bin:$PATH" bash "$H/build.sh" > /dev/null 2>&1; RC=$?
+[ "$RC" = 0 ] && [ "$(cat "$T/tools.log")" = "rustup $T/src/cli toolchain install --no-self-update
+cargo $T/src/cli build --release --locked" ] && ok || bad "toolchain and build calls: $(tr '\n' ';' < "$T/tools.log") (rc $RC)"
 grep -qx "wf=$T/src/cli/target/release/wf" "$GITHUB_OUTPUT" && ok || bad "wf output: $(cat "$GITHUB_OUTPUT")"
-grep -Eq '^- CLI build \(release, --locked, no cache\): [0-9]+ s$' "$GITHUB_STEP_SUMMARY" && ok || bad "build time not in the step summary"
+grep -Eq '^- Rust toolchain install: [0-9]+ s$' "$GITHUB_STEP_SUMMARY" && grep -Eq '^- CLI build \(release, --locked, no cache\): [0-9]+ s$' "$GITHUB_STEP_SUMMARY" && ok || bad "toolchain or build time not in the step summary"
 
 summary
