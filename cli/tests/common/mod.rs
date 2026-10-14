@@ -90,6 +90,25 @@ impl Stubs {
         self
     }
 
+    /// The stub `gh`'s answer for a plain `gh api <path>`: one object.
+    pub fn gh_object(self, path: &str, object: &Value) -> Self {
+        let key: String = path
+            .chars()
+            .map(|c| if "/?&=".contains(c) { '_' } else { c })
+            .collect();
+        std::fs::write(
+            self.dir.path().join(format!("{key}.json")),
+            object.to_string(),
+        )
+        .unwrap();
+        self
+    }
+
+    /// The arguments of the stub `gh`'s POST number `n`.
+    pub fn post(&self, n: usize) -> Vec<String> {
+        nul_split(&std::fs::read_to_string(self.dir.path().join(format!("post-{n}.args"))).unwrap())
+    }
+
     pub fn path(&self) -> PathBuf {
         self.dir.path().to_path_buf()
     }
