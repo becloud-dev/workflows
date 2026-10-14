@@ -8,6 +8,9 @@ inputs:
   round: {required: true}
   base: {required: true, description: "Commit the branch was cut from"}
   plan_file: {required: true}
+  wf:
+    description: Path of the built `wf` CLI (the setup-cli action's `wf` output)
+    required: true
   findings_file: {required: false, default: none}
   execute_model: {required: true}
   check_model: {required: true}
@@ -163,68 +166,12 @@ runs:
         PLAN_FILE: ${{ inputs.plan_file }}
         BASE: ${{ inputs.base }}
         RESULTS: ${{ steps.commands.outputs.results_file }}
+        WF: ${{ inputs.wf }}
       run: |
         set -uo pipefail
-        state=none viol=() kinds=() allowed=()
-        listing="$RUNNER_TEMP/scope-plan.txt" deleted="$RUNNER_TEMP/scope-deleted.bin"
-        changed="$RUNNER_TEMP/scope-workflows.bin"
-        # the backticked bullets between **Files** and the next bold line; the heading must be there
-        if [ ! -r "$PLAN_FILE" ] \
-           || ! awk 'BEGIN { seen = 0 }
-                     /^\*\*Files\*\*/ { inside = 1; seen = 1; next }
-                     inside && /^\*\*/ { inside = 0 }
-                     inside && /^- `[^`]+`/ { s = substr($0, 4); print substr(s, 1, index(s, "`") - 1) }
-                     END { exit !seen }' "$PLAN_FILE" > "$listing"; then
-          state=error
-        elif ! git diff --name-only --no-renames --diff-filter=D -z "$BASE...HEAD" > "$deleted" 2> /dev/null \
-             || ! git diff --name-only --no-renames --diff-filter=AM -z "$BASE...HEAD" -- .github/workflows > "$changed" 2> /dev/null; then
-          state=error
-        else
-          while IFS= read -r p; do allowed+=("$p"); done < "$listing"
-          # literal comparison only: an entry ending in / names a directory, any other entry one file
-          named() {
-            local a
-            for a in "${allowed[@]}"; do
-              if [ "$1" = "$a" ] || { [[ $a == */ ]] && [[ $1 == "$a"* ]]; }; then return 0; fi
-            done
-            return 1
-          }
-          { [ -s "$deleted" ] || [ -s "$changed" ]; } && state=ok
-          while IFS= read -r -d '' d; do
-            named "$d" || { viol+=("$d"); kinds+=(deleted); state=out_of_scope; }
-          done < "$deleted"
-          while IFS= read -r -d '' c; do
-            named "$c" || { viol+=("$c"); kinds+=(changed); state=out_of_scope; }
-          done < "$changed"
-        fi
-        {
-          printf '### scope check\nstate: %s\n' "$state"
-          case "$state" in
-            error) echo 'the deletions, the workflow changes or the plan Files list could not be read' ;;
-            out_of_scope)
-              dels=() chgs=()
-              for i in "${!viol[@]}"; do
-                if [ "${kinds[i]}" = changed ]; then chgs+=("${viol[i]}"); else dels+=("${viol[i]}"); fi
-              done
-              if [ "${#dels[@]}" -gt 0 ]; then
-                echo "deleted but not named in the plan Files list:"
-                printf -- '- %s\n' "${dels[@]}"
-              fi
-              if [ "${#chgs[@]}" -gt 0 ]; then
-                echo "changed under .github/workflows but not named in the plan Files list:"
-                printf -- '- %s\n' "${chgs[@]}"
-              fi ;;
-          esac
-          echo
-        } >> "$RESULTS"
-        json='[]' kjson='[]'
-        if [ "${#viol[@]}" -gt 0 ]; then
-          json=$(for d in "${viol[@]}"; do jq -nc --arg d "$d" '$d'; done | jq -sc .)
-          kjson=$(for k in "${kinds[@]}"; do jq -nc --arg k "$k" '$k'; done | jq -sc .)
-        fi
-        echo "scope_state=$state" >> "$GITHUB_OUTPUT"
-        echo "scope_violations=$json" >> "$GITHUB_OUTPUT"
-        echo "scope_violation_kinds=$kjson" >> "$GITHUB_OUTPUT"
+        # fail closed: a CLI that did not run to its end leaves the state at error, which fails the round
+        "$WF" executor scope --base "$BASE" --plan-file "$PLAN_FILE" --results "$RESULTS" \
+          --github-output "$GITHUB_OUTPUT" || echo "scope_state=error" >> "$GITHUB_OUTPUT"
 
     - id: check
       if: steps.commands.outcome == 'success'
@@ -300,7 +247,7 @@ runs:
               | if ($k[$i] // "deleted") == "changed"
                 then "- change of \($v[$i]) under .github/workflows is not in the plan Files list"
                 else "- deletion of \($v[$i]) is not in the plan Files list" end' <<< "$SCOPE_VIOLATIONS"
-            [ "${SCOPE_STATE:-none}" = error ] && echo "- the deletions or the plan Files list could not be read"
+            [ "${SCOPE_STATE:-none}" = error ] && echo "- the deletions, the workflow changes or the plan Files list could not be read"
           } > "$findings"
         else
           echo "The round produced no valid result." > "$findings"

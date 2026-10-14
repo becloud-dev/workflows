@@ -11,7 +11,7 @@ out=$(python3 -I agent_calls.py "$ROOT"); rc=$?
 [ "$(printf '%s\n' "$out" | grep -c '^OK')" -ge 9 ] && ok || bad "fewer than 9 agent calls checked"
 
 # Steps on the CLI: no claude-code-action call, the CLI built by setup-cli and run.
-for step in planner-backlog:'planner backlog'; do
+for step in planner-backlog:'planner backlog' dev-execute:'executor gate'; do
   f=$ROOT/.github/workflows/${step%%:*}.yml cmd=${step#*:}
   ! grep -q 'anthropics/claude-code-action@' "$f" && ok || bad "${step%%:*} still calls claude-code-action"
   grep -q 'uses: \$/.github/actions/setup-cli$' "$f" && ok || bad "${step%%:*} does not set up the CLI"

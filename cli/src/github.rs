@@ -43,4 +43,53 @@ impl Gh {
         }
         Ok(items)
     }
+
+    /// GETs one object at `path`.
+    pub fn get(&self, path: &str) -> Result<Value> {
+        let out = self.api(&[path])?;
+        if !out.status.success() {
+            bail!(
+                "gh api {path} failed: {}",
+                String::from_utf8_lossy(&out.stderr).trim()
+            );
+        }
+        serde_json::from_slice(&out.stdout)
+            .with_context(|| format!("gh api {path} did not print JSON"))
+    }
+
+    /// Whether `path` answers: a 404 is `false`, any other failure is an error.
+    pub fn exists(&self, path: &str) -> Result<bool> {
+        let out = self.api(&[path])?;
+        if out.status.success() {
+            return Ok(true);
+        }
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        if stderr.contains("404") {
+            return Ok(false);
+        }
+        bail!("gh api {path} failed: {}", stderr.trim())
+    }
+
+    /// Posts a comment on an issue or pull request.
+    pub fn comment(&self, repo: &str, issue: u64, body: &str) -> Result<()> {
+        let path = format!("repos/{repo}/issues/{issue}/comments");
+        let field = format!("body={body}");
+        let out = self.api(&["-X", "POST", &path, "-f", &field])?;
+        if !out.status.success() {
+            bail!(
+                "gh api POST {path} failed: {}",
+                String::from_utf8_lossy(&out.stderr).trim()
+            );
+        }
+        Ok(())
+    }
+
+    fn api(&self, args: &[&str]) -> Result<std::process::Output> {
+        Command::new(&self.program)
+            .arg("api")
+            .args(args)
+            .stdin(Stdio::null())
+            .output()
+            .with_context(|| format!("cannot run {}", self.program.display()))
+    }
 }

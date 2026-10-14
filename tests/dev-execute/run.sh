@@ -65,62 +65,30 @@ plan_comment() { # login body url
 gate() { ( cd "$W/repo" && BODY="$1" GH_TOKEN=x OWNERS="${OWNERS_VAR-bentoluizv}" bash "$W/gate.sh" > "$C/stdout" 2>&1 ); GRC=$?; }
 LBL='[{"name":"RELEASE"},{"name":"feature"}]'
 
-echo "# gate"
-mkrepo; newcase; issue '{"name":"Feature"}' "Add a --help flag" "$LBL"; plan_comment github-actions[bot] $'<!-- dev-plan -->\nplan one' https://x/1
-gate '/approved'
-[ "$GRC" -ne 0 ] && grep -q 'exactly /approve' "$C/stdout" && ok "gate: /approved rejected with an error" || bad "gate: /approved ($GRC)"
-gate $'/approve\r\nthanks'
-[ "$GRC" -eq 0 ] && [ "$(out ok)" = true ] && ok "gate: /approve with CRLF and a second line accepted" || bad "gate: accept ($GRC)"
-[ "$(out branch)" = feat/13-add-a-help-flag ] && ok "gate: branch feat/13-add-a-help-flag" || bad "gate: branch $(out branch)"
-[ "$(out ctype)" = feat ] && [ "$(out plan_url)" = https://x/1 ] && [ -n "$(out base)" ] && ok "gate: type, plan url and base" || bad "gate: outputs"
-grep -q '^plan one$' "$RUNNER_TEMP/plan.md" && ok "gate: plan body written" || bad "gate: plan body"
-
-newcase; mkrepo; issue '{"name":"Bug"}' 'Fix: Crash on "Save" — NOW!! with a very long title that keeps going and going' "$LBL"; plan_comment github-actions[bot] $'<!-- dev-plan -->\np' u
-gate /approve
-b=$(out branch)
-case "$b" in fix/13-fix-crash-on-save-now-with-a-very-long*) ok "gate: Bug gives fix, slug cleaned ($b)";; *) bad "gate: slug $b";; esac
-[ "${#b}" -le 48 ] && ok "gate: slug cut, no trailing dash" || bad "gate: length ${#b}"
-case "$b" in *-) bad "gate: trailing dash";; *) ok "gate: no trailing dash";; esac
-
-newcase; mkrepo; issue null "Tidy" "$LBL"; plan_comment github-actions[bot] $'<!-- dev-plan -->\np' u
-gate /approve; [ "$(out branch)" = chore/13-tidy ] && ok "gate: no type gives chore" || bad "gate: chore $(out branch)"
-
-newcase; mkrepo; issue '{"name":"Feature"}' "!!!" "$LBL"; plan_comment github-actions[bot] $'<!-- dev-plan -->\np' u
-gate /approve; [ "$(out branch)" = feat/13-change ] && ok "gate: empty slug falls back to change" || bad "gate: empty slug $(out branch)"
-
-newcase; mkrepo; issue '{"name":"Feature"}' "T" '[{"name":"feature"}]'; plan_comment github-actions[bot] $'<!-- dev-plan -->\np' u
-gate /approve
-[ "$GRC" -eq 0 ] && [ "$(out ok)" = false ] && grep -q 'does not carry `RELEASE`' "$STUB_LOG" && ok "gate: no RELEASE stops with a comment" || bad "gate: no RELEASE"
-
-newcase; mkrepo; issue '{"name":"Project"}' "T" "$LBL"; plan_comment github-actions[bot] $'<!-- dev-plan -->\np' u
-gate /approve; [ "$(out ok)" = false ] && grep -q 'sub-issues of a Project' "$STUB_LOG" && ok "gate: Project stops with a comment" || bad "gate: Project"
-
-newcase; mkrepo; issue '{"name":"Feature"}' "T" "$LBL"; : > "$STUB_COMMENTS"
-gate /approve; [ "$(out ok)" = false ] && grep -q 'no development plan comment' "$STUB_LOG" && ok "gate: no plan stops with a comment" || bad "gate: no plan"
-
-newcase; mkrepo; issue '{"name":"Feature"}' "T" "$LBL"; plan_comment mallory $'<!-- dev-plan -->\nevil plan' https://x/evil
-gate /approve; [ "$(out ok)" = false ] && ok "gate: a marker comment by another author is not a plan" || bad "gate: spoof accepted"
-
-newcase; mkrepo; issue '{"name":"Feature"}' "T" "$LBL"
-plan_comment github-actions[bot] $'<!-- dev-plan -->\nold' https://x/old
-plan_comment mallory $'<!-- dev-plan -->\nevil' https://x/evil
-plan_comment github-actions[bot] $'<!-- dev-plan -->\nnew' https://x/new
-gate /approve; [ "$(out plan_url)" = https://x/new ] && grep -q '^new$' "$RUNNER_TEMP/plan.md" && ok "gate: latest bot plan wins over older and spoofed" || bad "gate: latest ($(out plan_url))"
-
-newcase; mkrepo; issue '{"name":"Feature"}' "T" "$LBL"; plan_comment github-actions[bot] $'<!-- dev-plan -->\np' u; export STUB_BRANCH_EXISTS=1
-gate /approve; [ "$(out ok)" = false ] && grep -q 'already exists' "$STUB_LOG" && ok "gate: existing branch stops with a comment" || bad "gate: branch exists"
-
-echo "# gate: author"
-for a in bentoluizv BentoLuizV github-actions[bot]; do
-  newcase; mkrepo; AUTHOR=$a issue '{"name":"Feature"}' "T" "$LBL"; plan_comment github-actions[bot] $'<!-- dev-plan -->\np' u
-  gate /approve; [ "$(out ok)" = true ] && ok "gate: author $a accepted" || bad "gate: author $a ($(out ok))"
-done
-newcase; mkrepo; AUTHOR=mallory issue '{"name":"Feature"}' "T" "$LBL"; plan_comment github-actions[bot] $'<!-- dev-plan -->\np' u
-gate /approve; [ "$(out ok)" = false ] && grep -q 'not written by an owner' "$STUB_LOG" && ok "gate: non-owner author stops with a comment" || bad "gate: non-owner author"
-newcase; mkrepo; AUTHOR=bentoluizv issue '{"name":"Feature"}' "T" "$LBL"; plan_comment github-actions[bot] $'<!-- dev-plan -->\np' u
-OWNERS_VAR="" gate /approve; [ "$(out ok)" = false ] && ok "gate: empty owners refuses an owner-named author" || bad "gate: empty owners"
-newcase; mkrepo; AUTHOR=bentoluizv issue '{"name":"Feature"}' "T" "$LBL"; plan_comment github-actions[bot] $'<!-- dev-plan -->\np' u
-OWNERS_VAR="bentoluizv-evil" gate /approve; [ "$(out ok)" = false ] && ok "gate: owners entry that only contains the login does not match" || bad "gate: substring"
+echo "# gate: the step runs wf and adds the base"
+# the cases of the gate itself (owner, label, type, plan, branch, /approve) are cli/src/executor/gate.rs
+# and cli/tests/executor_gate.rs; here only what the step wraps around the CLI
+cat > "$W/bin/wf" <<'STUB'
+#!/usr/bin/env bash
+echo "wf $*" >> "$STUB_LOG"
+echo "COMMENT_BODY=${COMMENT_BODY-unset}" >> "$STUB_LOG"
+printf '%s\n' "$STUB_WF_OUTPUT" | sed '/^$/d' >> "$GITHUB_OUTPUT"
+STUB
+chmod +x "$W/bin/wf"
+gate() { ( cd "$W/repo" && WF="$W/bin/wf" ISSUE=13 COMMENT_BODY="$1" GH_TOKEN=x OWNERS=bentoluizv bash "$W/gate.sh" > "$C/stdout" 2>&1 ); GRC=$?; }
+mkrepo; newcase; export STUB_WF_OUTPUT=$'ok=true\nbranch=feat/13-x'
+gate $'/approve\nsecond line'
+[ "$GRC" -eq 0 ] && ok "gate step: runs wf executor gate" || bad "gate step: rc $GRC"
+grep -q "^wf executor gate --repo acme/app --issue 13 --owners bentoluizv --plan-file $RUNNER_TEMP/plan.md --github-output $GITHUB_OUTPUT$" "$STUB_LOG" \
+  && ok "gate step: arguments" || bad "gate step: arguments: $(grep '^wf ' "$STUB_LOG")"
+grep -q '^COMMENT_BODY=/approve$' "$STUB_LOG" && ok "gate step: the comment body reaches wf through the environment" || bad "gate step: body"
+[ "$(out base)" = "$(git -C "$W/repo" rev-parse HEAD)" ] && ok "gate step: base is the checkout HEAD after an approval" || bad "gate step: base"
+newcase; export STUB_WF_OUTPUT='ok=false'
+gate /approved
+[ "$GRC" -eq 0 ] && [ "$(out ok)" = false ] && [ -z "$(out base)" ] && ok "gate step: a refusal sets ok=false and no base" || bad "gate step: refusal ($GRC)"
+unset STUB_WF_OUTPUT
+! grep -q 'COMMENT_BODY\|github.event.comment' <<< "$(python3 -I -c 'import yaml,sys; d=yaml.safe_load(open(sys.argv[1])); print([s for s in d["jobs"]["dev-execute"]["steps"] if s.get("id")=="gate"][0]["run"])' "$ROOT/.github/workflows/dev-execute.yml")" \
+  && ok "gate step: the comment body is not expanded inside the script" || bad "gate step: body in script"
 
 echo "# final"
 final() { # base-ref R1 R2 R3 outcomes... via env set by caller
@@ -277,7 +245,7 @@ emit(pj.get("needs") == "dev-execute" and "needs.dev-execute.outputs.action == '
      "publish: needs the rounds job and runs only for a pr or draft action")
 emit(pj.get("permissions") == {"contents": "read", "issues": "read"}, "publish: contents read and issues read only")
 emit(re.search(r"^\s+issues: read # \S", open(sys.argv[1]).read(), re.M) is not None, "publish: issues read carries a reason")
-emit(outs == {"action", "verdict", "rounds", "branch", "ctype", "plan_url"},
+emit(outs == {"action", "verdict", "rounds", "branch", "ctype", "plan_url", "plan_comment_id", "plan_sha256", "base"},
      "publish: the rounds job hands over only the scalar outputs")
 emit(len(uploads) == 1 and len(downloads) == 1 and downloads[0].get("with", {}).get("name") == uploads[0]["with"]["name"],
      "publish: downloads only the bundle the rounds job uploads")
@@ -290,8 +258,13 @@ emit(0 <= pos("Verify the bundle") < pos("Mint the executor App token"),
 plan_step = by_name.get("Check the bundle against the plan", {})
 emit(0 <= pos("Verify the bundle") < pos("Check the bundle against the plan") < pos("Mint the executor App token"),
      "publish: checks the bundle against the plan after verifying it and before minting the token")
-emit(plan_step != {} and "verdict" not in json.dumps(plan_step).lower() and "needs." not in json.dumps(plan_step),
-     "publish: the plan check does not read the rounds verdict or any rounds output")
+# the check reads the plan from the comment the gate pinned (ID, hash) and the base; never the verdict or
+# any other output of the rounds job
+plan_refs = set(re.findall(r"needs\.dev-execute\.outputs\.(\w+)", json.dumps(plan_step)))
+emit(plan_step != {} and "verdict" not in json.dumps(plan_step).lower()
+     and plan_refs == {"plan_comment_id", "plan_sha256", "base"}
+     and re.search(r"needs\.(?!dev-execute\.outputs\.)", json.dumps(plan_step)) is None,
+     "publish: the plan check reads only the pin and the base from the rounds job, not its verdict")
 
 # the token: scope, use and pinning
 emit(bool(mint.get("id")) and all(

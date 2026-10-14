@@ -1,6 +1,7 @@
 //! The steps of the becloud-dev workflows; `wf` (src/main.rs) is the command line over them.
 
 pub mod agent;
+pub mod executor;
 pub mod github;
 pub mod planner;
 pub mod record;

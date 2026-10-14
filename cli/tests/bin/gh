@@ -1,13 +1,23 @@
 #!/usr/bin/env bash
 # Stub `gh` for the CLI's tests. A test copies it into a scratch directory with one answer per API
 # path: the path with `/ ? & =` turned into `_`, plus `.json`. A path with no answer fails as
-# GitHub's 404 does. Every call is appended to calls.log; a call without --paginate --slurp fails.
+# GitHub's 404 does. Every call is appended to calls.log. Lists are read with --paginate --slurp
+# (the file holds the array of pages); an object is read with a plain `gh api <path>` (the file
+# holds the object). A POST is answered `{}` and its arguments are kept NUL-separated in post-N.args.
 set -u
 dir=$(cd "$(dirname "$0")" && pwd)
 printf '%s\n' "$*" >> "$dir/calls.log"
 [ "${1:-}" = api ] || { echo "stub gh: only 'gh api' is answered" >&2; exit 2; }
-case " $* " in *" --paginate "*) ;; *) echo "stub gh: --paginate missing" >&2; exit 2 ;; esac
-case " $* " in *" --slurp "*) ;; *) echo "stub gh: --slurp missing" >&2; exit 2 ;; esac
+case " $* " in
+  *" -X POST "*)
+    n=$(( $(ls "$dir"/post-*.args 2> /dev/null | wc -l) + 1 ))
+    printf '%s\0' "$@" > "$dir/post-$n.args"
+    echo '{}'
+    exit 0 ;;
+esac
+case " $* " in
+  *" --paginate "*) case " $* " in *" --slurp "*) ;; *) echo "stub gh: --slurp missing" >&2; exit 2 ;; esac ;;
+esac
 path=
 for a in "$@"; do case $a in repos/*) path=$a ;; esac; done
 key=$(printf '%s' "$path" | tr '/?&=' '____')
