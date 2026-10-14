@@ -10,6 +10,7 @@ file in the same pull request; `tests/dev-execute/run.sh` checks that every work
 | `dev-plan.yml` | Post the development plan | GITHUB_TOKEN | contents read, issues write |
 | `dev-execute.yml` | Read the approval, run the rounds and the check, post the findings | GITHUB_TOKEN | contents read, issues write |
 | `dev-execute.yml` | Push the branch and open the pull request | executor App | contents write, pull-requests write, workflows write |
+| `dev-execute.yml` | Report a publication that failed or was refused | GITHUB_TOKEN | issues write |
 | `release-please.yml` | Open and update the release pull request, tag the release | release App | contents write, issues write, pull-requests write |
 | `release-review.yml` | Review the release pull request | GITHUB_TOKEN | contents read, issues read, pull-requests write |
 | `release-issues.yml` | Create the blocker issues from an approved review | GITHUB_TOKEN | contents read, issues write, pull-requests write |
@@ -46,12 +47,19 @@ metadata read.
 | Secret | `EXECUTOR_APP_PRIVATE_KEY` |
 | Variable | `EXECUTOR_APP_CLIENT_ID` |
 
-`dev-execute.yml` runs in two jobs on two runners. The `dev-execute` job runs the gate, the rounds, the
-check and the findings comment. When the outcome is a pull request or a draft, it bundles the commits
-from the base to HEAD and uploads the bundle as an artifact. The `dev-publish` job runs only for a
-pull request or a draft. It takes that bundle and the job outputs `action`, `verdict`, `rounds`,
-`branch`, `ctype` and `plan_url`, verifies the bundle and checks that its history reaches the base
-commit of its own checkout. Only then does it mint the token, push and open the pull request.
+`dev-execute.yml` runs in three jobs on three runners. The `dev-execute` job runs the gate, the rounds,
+the check and the findings comment. The gate (`wf executor gate`) pins the plan it approves: the
+plan comment's ID and the SHA-256 of its body, written to job outputs before any round code runs.
+When the outcome is a pull request or a draft, the job bundles the commits from the base to HEAD
+and uploads the bundle as an artifact. The `dev-publish` job runs only for a pull request or a
+draft. It checks out the commit the rounds started from (the output `base`, not the default branch
+as it is now), takes the bundle and the job outputs, verifies the bundle and checks that its
+history reaches that commit. `wf executor publish-check` then reads the plan comment again by the
+pinned ID and refuses a comment whose body hash differs, whose author is not the bot, or that is
+not on the issue; only then does it judge the bundle's deletions and workflow changes against the
+plan's **Files** list. Only after that does the job mint the token, push and open the pull
+request. The `dev-report` job holds only `issues: write`, runs no model code, no checkout and no
+consumer command, and comments on the issue when `dev-publish` failed, which includes a refusal.
 
 The token is minted once per run, in the `dev-publish` job, and is scoped to the current repository
 with exactly the three permissions above. It is used by the push step and the pull request step. No
@@ -65,13 +73,15 @@ set to `/dev/null` and the global and system git config disabled. The bundle is 
 the rounds job. A hook or config that the rounds wrote into the checkout's `.git` therefore cannot run
 during the bundle or the push, or redirect the push, so the token reaches only the push URL.
 
-## The deletion check
+## The scope check
 
-The `scope` step of the `dev-round` action lists the files the executor deleted between the base and
-HEAD, with a rename counted as a deletion of its old path. A deletion is allowed only when its path is
-named in the plan's **Files** list, or lies under a listed path that ends in `/`; the comparison is
-literal. A deletion outside the list, or a diff or plan that cannot be read, sets the verdict to fail,
-whatever the check model says. The findings name each path.
+The `scope` step of the `dev-round` action runs `wf executor scope`. It lists the files the executor
+deleted between the base and HEAD, with a rename counted as a deletion of its old path, and the
+files added or modified under `.github/workflows`. A path is allowed only when it is named in the
+plan's **Files** list, or lies under a listed path that ends in `/`; the comparison is literal. A
+path outside the list, or a diff or plan that cannot be read, or a CLI that does not run to its
+end, sets the verdict to fail, whatever the check model says. The findings name each path. The
+publish job makes the same judgement on the bundle, against the plan that was approved.
 
 ## The repository ruleset
 

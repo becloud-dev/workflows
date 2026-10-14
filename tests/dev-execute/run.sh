@@ -245,7 +245,7 @@ emit(pj.get("needs") == "dev-execute" and "needs.dev-execute.outputs.action == '
      "publish: needs the rounds job and runs only for a pr or draft action")
 emit(pj.get("permissions") == {"contents": "read", "issues": "read"}, "publish: contents read and issues read only")
 emit(re.search(r"^\s+issues: read # \S", open(sys.argv[1]).read(), re.M) is not None, "publish: issues read carries a reason")
-emit(outs == {"action", "verdict", "rounds", "branch", "ctype", "plan_url", "plan_comment_id", "plan_sha256"},
+emit(outs == {"action", "verdict", "rounds", "branch", "ctype", "plan_url", "plan_comment_id", "plan_sha256", "base"},
      "publish: the rounds job hands over only the scalar outputs")
 emit(len(uploads) == 1 and len(downloads) == 1 and downloads[0].get("with", {}).get("name") == uploads[0]["with"]["name"],
      "publish: downloads only the bundle the rounds job uploads")
@@ -258,8 +258,13 @@ emit(0 <= pos("Verify the bundle") < pos("Mint the executor App token"),
 plan_step = by_name.get("Check the bundle against the plan", {})
 emit(0 <= pos("Verify the bundle") < pos("Check the bundle against the plan") < pos("Mint the executor App token"),
      "publish: checks the bundle against the plan after verifying it and before minting the token")
-emit(plan_step != {} and "verdict" not in json.dumps(plan_step).lower() and "needs." not in json.dumps(plan_step),
-     "publish: the plan check does not read the rounds verdict or any rounds output")
+# the check reads the plan from the comment the gate pinned (ID, hash) and the base; never the verdict or
+# any other output of the rounds job
+plan_refs = set(re.findall(r"needs\.dev-execute\.outputs\.(\w+)", json.dumps(plan_step)))
+emit(plan_step != {} and "verdict" not in json.dumps(plan_step).lower()
+     and plan_refs == {"plan_comment_id", "plan_sha256", "base"}
+     and re.search(r"needs\.(?!dev-execute\.outputs\.)", json.dumps(plan_step)) is None,
+     "publish: the plan check reads only the pin and the base from the rounds job, not its verdict")
 
 # the token: scope, use and pinning
 emit(bool(mint.get("id")) and all(
