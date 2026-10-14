@@ -71,6 +71,8 @@ fn run(dir: &Path, base: &str, body: &str, pinned: &str) -> Output {
             "--git-dir",
         ])
         .arg(dir.join(".git"))
+        .arg("--github-output")
+        .arg(dir.join("github-output"))
         .env_clear()
         .env("PATH", path)
         .output()
@@ -85,6 +87,11 @@ fn the_approved_plan_naming_the_deletion_is_published() {
         out.status.success(),
         "{}",
         String::from_utf8_lossy(&out.stdout)
+    );
+    // no workflow file changed, so the token is minted without the workflows permission
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("github-output")).unwrap(),
+        "workflows=false\n"
     );
 }
 

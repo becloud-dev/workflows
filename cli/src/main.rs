@@ -1,5 +1,5 @@
 use becloud_workflows::agent::Agent;
-use becloud_workflows::executor::{gate, publish, scope};
+use becloud_workflows::executor::{decide, gate, publish, red, scope, verdict};
 use becloud_workflows::github::Gh;
 use becloud_workflows::planner::backlog;
 use clap::{Parser, Subcommand};
@@ -95,7 +95,64 @@ enum Executor {
         /// The bare git directory the bundle was fetched into (`refs/push/head` is its tip).
         #[arg(long)]
         git_dir: PathBuf,
+        /// The file the step outputs are appended to (`$GITHUB_OUTPUT`): `workflows=true|false`.
+        #[arg(long)]
+        github_output: PathBuf,
     },
+    /// Write the approved plan for the rounds: the comment the gate pinned, refused if it changed.
+    Plan {
+        /// owner/repo
+        #[arg(long)]
+        repo: String,
+        #[arg(long)]
+        issue: u64,
+        #[arg(long)]
+        plan_comment_id: u64,
+        #[arg(long)]
+        plan_sha256: String,
+        #[arg(long)]
+        plan_file: PathBuf,
+    },
+    /// Run the test command on the base tree with the change's test files; they must fail there.
+    /// The command and the test path globs are read from `TEST` and `TEST_PATHS`.
+    Red {
+        #[arg(long)]
+        base: String,
+        #[arg(long)]
+        round: String,
+        /// Where the base worktree and the log are made (`$RUNNER_TEMP`).
+        #[arg(long)]
+        work_dir: PathBuf,
+        #[arg(long)]
+        results: PathBuf,
+        #[arg(long)]
+        github_output: PathBuf,
+    },
+    /// The round's verdict. Reads `EXECUTE`, `CHECK`, `CHECK_EXIT`, `TEST_EXIT`, `RED_STATE`,
+    /// `SCOPE_STATE`, `SCOPE_VIOLATIONS` and `SCOPE_KINDS` from the environment.
+    Verdict {
+        #[arg(long)]
+        round: String,
+        #[arg(long)]
+        findings_file: PathBuf,
+        #[arg(long)]
+        github_output: PathBuf,
+    },
+    /// What the run publishes, from `R1_*`, `R2_*`, `R3_*` (`OUTCOME`, `VERDICT`, `FINDINGS`);
+    /// bundles a pull request or draft into `<work-dir>/bundle/publish.bundle`.
+    Decide {
+        #[arg(long)]
+        base: String,
+        #[arg(long)]
+        work_dir: PathBuf,
+        #[arg(long)]
+        github_output: PathBuf,
+    },
+}
+
+/// A step input passed through the environment; unset reads as empty, as in the shell steps.
+fn var(name: &str) -> String {
+    std::env::var(name).unwrap_or_default()
 }
 
 fn main() -> ExitCode {
@@ -133,6 +190,7 @@ fn main() -> ExitCode {
             plan_sha256,
             base,
             git_dir,
+            github_output,
         }) => publish::run(
             &Gh::from_env(),
             &repo,
@@ -143,7 +201,79 @@ fn main() -> ExitCode {
             },
             &base,
             &git_dir,
+            &github_output,
         ),
+        Command::Executor(Executor::Plan {
+            repo,
+            issue,
+            plan_comment_id,
+            plan_sha256,
+            plan_file,
+        }) => publish::read_pinned(
+            &Gh::from_env(),
+            &repo,
+            issue,
+            &publish::Pin {
+                comment_id: plan_comment_id,
+                sha256: &plan_sha256,
+            },
+            &plan_file,
+        ),
+        Command::Executor(Executor::Red {
+            base,
+            round,
+            work_dir,
+            results,
+            github_output,
+        }) => red::run(
+            std::path::Path::new("."),
+            &work_dir,
+            &base,
+            &var("TEST"),
+            &var("TEST_PATHS"),
+            &round,
+            &results,
+            &github_output,
+        ),
+        Command::Executor(Executor::Verdict {
+            round,
+            findings_file,
+            github_output,
+        }) => verdict::run(
+            &verdict::Inputs {
+                execute: var("EXECUTE"),
+                check: var("CHECK"),
+                check_exit: var("CHECK_EXIT"),
+                test_exit: var("TEST_EXIT"),
+                red_state: var("RED_STATE"),
+                scope_state: var("SCOPE_STATE"),
+                scope_violations: var("SCOPE_VIOLATIONS"),
+                scope_kinds: var("SCOPE_KINDS"),
+                round,
+            },
+            &findings_file,
+            &github_output,
+        ),
+        Command::Executor(Executor::Decide {
+            base,
+            work_dir,
+            github_output,
+        }) => {
+            let rounds: Vec<decide::Round> = (1..=3)
+                .map(|n| decide::Round {
+                    outcome: var(&format!("R{n}_OUTCOME")),
+                    verdict: var(&format!("R{n}_VERDICT")),
+                    findings: var(&format!("R{n}_FINDINGS")),
+                })
+                .collect();
+            decide::run(
+                std::path::Path::new("."),
+                &work_dir,
+                &base,
+                &rounds,
+                &github_output,
+            )
+        }
         Command::Planner(Planner::Backlog { repo, model, out }) => {
             let env: Vec<(String, String)> = std::env::vars().collect();
             backlog::run(
