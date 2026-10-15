@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.4.0](https://github.com/becloud-dev/workflows/compare/v0.3.0...v0.4.0) (2026-10-15)
+
+
+### Features
+
+* **dev-execute:** move the round checks to the cli and run the gate in its own job ([#90](https://github.com/becloud-dev/workflows/issues/90)) ([3c94c2f](https://github.com/becloud-dev/workflows/commit/3c94c2fdbffd52dd0dc2fcba67b834d3b79f5409))
+* **dev-execute:** pin the approved plan and move the executor checks to the cli ([#88](https://github.com/becloud-dev/workflows/issues/88)) ([fc3df33](https://github.com/becloud-dev/workflows/commit/fc3df335e6559c7d71b8e04214fccab9c99e6d5e))
+* **dev-round:** make the executor's agent calls through the cli ([#91](https://github.com/becloud-dev/workflows/issues/91)) ([bb55604](https://github.com/becloud-dev/workflows/commit/bb556042da2b25c5f75d2c522ecbb29d36ee8686))
+
 ## [0.3.0](https://github.com/becloud-dev/workflows/compare/v0.2.1...v0.3.0) (2026-10-14)
 
 
