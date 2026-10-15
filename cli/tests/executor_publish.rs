@@ -42,6 +42,25 @@ fn bundle(deleted: &str) -> (tempfile::TempDir, String) {
     (dir, base)
 }
 
+/// A repository whose `refs/push/head` adds `added`; returns it with the base commit.
+fn bundle_adding(added: &str) -> (tempfile::TempDir, String) {
+    let dir = tempfile::tempdir().unwrap();
+    git(dir.path(), &["init", "-q", "-b", "main"]);
+    let a = dir.path().join("src/a.rs");
+    std::fs::create_dir_all(a.parent().unwrap()).unwrap();
+    std::fs::write(a, "x\n").unwrap();
+    git(dir.path(), &["add", "-A"]);
+    git(dir.path(), &["commit", "-q", "-m", "base"]);
+    let base = git(dir.path(), &["rev-parse", "HEAD"]);
+    let p = dir.path().join(added);
+    std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+    std::fs::write(p, "x\n").unwrap();
+    git(dir.path(), &["add", "-A"]);
+    git(dir.path(), &["commit", "-q", "-m", "change"]);
+    git(dir.path(), &["update-ref", "refs/push/head", "HEAD"]);
+    (dir, base)
+}
+
 fn comment(body: &str) -> Value {
     json!({"id": 41, "user": {"login": "github-actions[bot]"}, "body": body,
            "issue_url": format!("https://api.github.com/repos/{REPO}/issues/13")})
@@ -112,6 +131,22 @@ fn a_plan_edited_after_the_approval_is_refused_although_it_now_names_the_deletio
     let edited = format!("{PLAN}- `src/b.rs`\n");
     // the gate pinned the hash of PLAN; the rounds then edited the comment to the text above
     let out = run(dir.path(), &base, &edited, &sha256_hex(PLAN));
+    assert!(!out.status.success());
+    assert!(
+        String::from_utf8_lossy(&out.stdout)
+            .contains("::error::the plan comment was changed after it was approved")
+    );
+}
+
+#[test]
+fn a_forged_plan_naming_an_unapproved_workflow_is_refused() {
+    // The rounds job leaves a plan comment that names a workflow the owner never approved, and a
+    // bundle that adds it. The gate pinned the hash of the approved plan (which named only src/a.rs),
+    // so publish-check refuses on the pin before the bundle's workflow change is ever considered: the
+    // forged-plan half of #65, which on v0 is published (tests/executor-fixtures/run.sh).
+    let (dir, base) = bundle_adding(".github/workflows/evil.yml");
+    let forged = format!("{PLAN}- `.github/workflows/evil.yml`\n");
+    let out = run(dir.path(), &base, &forged, &sha256_hex(PLAN));
     assert!(!out.status.success());
     assert!(
         String::from_utf8_lossy(&out.stdout)
