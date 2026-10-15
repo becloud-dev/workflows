@@ -97,11 +97,17 @@ Each step has a review issue that holds the accepted review; its open sub-issues
 
 ### Test fixtures (with the executor)
 
-Each runs on a real runner on `workflows`, fails against `v0` and passes against the CLI executor:
-- Forged plan (#65): the rounds of an approved plan post or edit a `<!-- dev-plan -->` comment; the
-  publish job must publish the plan that was approved.
-- `BASH_ENV` (#55, #56, #61): the check or test command writes `BASH_ENV` and a `PATH` entry to
-  `GITHUB_ENV` and `GITHUB_PATH`; no later step of the publish job may run the injected file.
+Two cases (`tests/executor-fixtures/run.sh`, with `cli/tests/executor_publish.rs`), on a
+production-shaped bundle:
+- Forged plan (#65) — red on `v0`, green on the CLI. The rounds edit or repost the
+  `<!-- dev-plan -->` comment to name a workflow the owner never approved. `v0` reads "the last bot
+  comment" with no pin and publishes it (the suite runs `v0`'s own step and shows it accepts); the
+  gate's `(comment id, sha256)` pin, re-checked by `publish-check`, refuses it (the cargo tests).
+- `BASH_ENV` (#55, #56, #61) — a regression pin, not a v0-red case. The check and test commands can
+  append `BASH_ENV`/`GITHUB_ENV`/`GITHUB_PATH` entries, but the push and pull request run in a
+  separate publish job with no consumer command and no round, trusting only the no-code gate's pins;
+  that job split shipped in 0.3.0, so the injection already cannot reach the token on `v0`. The
+  fixture pins the isolation so a later change cannot regress it.
 
 ### Storage backend
 
