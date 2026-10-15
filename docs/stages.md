@@ -83,10 +83,14 @@ during the bundle or the push, or redirect the push, so the token reaches only t
 The `scope` step of the `dev-round` action runs `wf executor scope`. It lists the files the executor
 deleted between the base and HEAD, with a rename counted as a deletion of its old path, and the
 files added or modified under `.github/workflows`. A path is allowed only when it is named in the
-plan's **Files** list, or lies under a listed path that ends in `/`; the comparison is literal. A
-path outside the list, or a diff or plan that cannot be read, or a CLI that does not run to its
-end, sets the verdict to fail, whatever the check model says. The findings name each path. The
-publish job makes the same judgement on the bundle, against the plan that was approved.
+plan's **Files** list, or lies under a listed path that ends in `/`; the comparison is literal. It
+also lists the test files the implementer changed between the test-writer's commit and HEAD (the
+`TEST_PATHS` globs): only the test-writer may touch the tests, so any such change is a violation
+whether or not the plan names the file, which keeps the red proof meaningful. A path outside the
+list, a test file the implementer changed, a diff or plan that cannot be read, or a CLI that does
+not run to its end, sets the verdict to fail, whatever the check model says. The findings name each
+path. The publish job makes the same Files-list judgement on the bundle, against the plan that was
+approved.
 
 ## The repository ruleset
 
