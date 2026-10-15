@@ -106,8 +106,18 @@ The issue comes first and gets `triage`, never `RELEASE`; the pull request says 
 hand and closes the issue. Pushes and merges are the owner's call.
 
 ### Fixtures for the executor
-Two cases only, built with the CLI executor increment, each failing on `v0` and passing on the
-CLI: the forged plan (#65) and `BASH_ENV` injection (#56).
+Two cases only, built with the CLI executor increment.
+
+- Forged plan (#65) is red on `v0`, green on the CLI. On `v0` the publish job reads "the last bot
+  `<!-- dev-plan -->` comment" with no pin, so a bundle adding a workflow the owner never approved
+  is published once the rounds edit or repost that comment; the gate's `(comment id, sha256)` pin,
+  re-checked by `publish-check`, refuses it. The red half runs `v0`'s own step
+  (`tests/executor-fixtures/run.sh`); the green half is `cli/tests/executor_publish.rs`.
+- `BASH_ENV` injection (#55, #56, #61) is a regression **pin**, not a v0-red case. The push and
+  pull request run in a separate publish job that runs no consumer command, and this job split
+  shipped in 0.3.0 — so injected `GITHUB_ENV`/`GITHUB_PATH` entries already cannot reach the
+  token-holding steps on `v0`. The fixture pins that isolation (publish needs the no-code gate,
+  runs no round or command, and trusts only the gate's pins) so a later change cannot regress it.
 
 ### `triage-sandbox` is archived
 Changes are tested on `workflows`. The repository's open release PR and test issues are frozen
