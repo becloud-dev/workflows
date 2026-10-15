@@ -330,3 +330,42 @@ permissions reference lists their `GET` under "Issues" read for installation tok
 
 Found while recording the fixture: without `additionalProperties: false`, `structured_output`
 carried keys the schema did not name; the CLI's schemas forbid them.
+
+### What `--restricted` lets an agent call do (probes, 2026-10-14 and 2026-10-15)
+
+Sources: `claude --help` of 2.1.296 (the binary `setup-cli` pins, downloaded and checked against its
+SHA-256) and of 2.1.300; two local probes with the claude.ai login, Haiku 5.5. In each probe the
+agent was asked to attempt every step; the results below are the recorded `permission_denials` and
+the files and commits the steps left, not the model's own report.
+
+Help text (2.1.296): `--restricted` "removes the built-in tools that run commands or code (Bash,
+PowerShell, REPL and the other code-running tools) and WebFetch unless --tools names them", "confines
+the file tools to the working directories (--add-dir included), refuses bypassPermissions, and lets
+only a person or the configured permission handler approve writes to settings, git and
+tool-configuration files".
+
+Probe 1 (2026-10-14, the flags of `agent::args` with `--tools Read`, prompted by a release-review
+finding on 0.3.0): reads of a canary file outside the working directory, `/etc/hostname` and
+`/proc/version` were denied ("outside ... --restricted confines the file tools to the working
+directory"); `/proc/self/environ` and `/proc/<pid>/environ` returned "this device file would block or
+produce infinite output". The finding (`Read` reaches the environment) did not reproduce.
+
+Probe 2 (2026-10-15, 2.1.296, the executor's scope: `--tools Read,Edit,Write,Grep,Glob,Bash`, the
+allowlist of `executor::calls::allowlist` with `sh tests/run.sh` as test command, `--permission-mode
+dontAsk`), in a scratch repository:
+
+| Attempt | Result |
+| --- | --- |
+| Write `src/new.txt`; `git add`; `git commit -m`; `sh tests/run.sh` | done (file, commit and test output present) |
+| Write `.git/hooks/pre-commit`, `../outside.txt`, `.claude/settings.json` | denied, no file |
+| `touch marker` (not in the allowlist) | denied |
+| `git status && touch m`; `git status; touch m`; `sh tests/run.sh "$(touch m)"` | denied, no marker |
+| `git push origin main`; `git -C .. status`; `git commit --amend ...; touch m` | denied |
+
+Inference: the `Bash(<command>:*)` rules match the whole command, and a compound, a command
+substitution or another git subcommand falls outside them; with `dontAsk` the call is refused, not
+asked. The test command itself still runs whatever code the change contains, by design.
+
+Not verified: a rule whose command contains a comma (the rules are passed comma-joined); a symlink
+inside the working directory that points outside; the same results on the CI runner with
+`CLAUDE_CODE_OAUTH_TOKEN` (the executor's first run is the check); one sample per attempt.

@@ -282,13 +282,26 @@ mod tests {
 
     #[test]
     fn the_allowlist_adds_the_consumer_commands_to_the_plain_git_commands() {
-        let a = allowlist("", "").unwrap();
-        assert!(a.contains(&"Bash(git rm:*)".to_string()));
-        assert!(
-            !a.iter()
-                .any(|r| r == "Bash" || r == "Bash(git:*)" || r.starts_with("Bash(rm"))
+        // exactly the file tools and the git commands of a commit: no wider git (checkout, reset,
+        // clean, push) and no rm
+        assert_eq!(
+            allowlist("", "").unwrap(),
+            [
+                "Read",
+                "Edit",
+                "Write",
+                "Grep",
+                "Glob",
+                "Bash(git add:*)",
+                "Bash(git commit:*)",
+                "Bash(git status:*)",
+                "Bash(git diff:*)",
+                "Bash(git log:*)",
+                "Bash(git rm:*)",
+            ]
         );
         let a = allowlist("npm run check", "npm test").unwrap();
+        assert_eq!(a.len(), 13);
         assert!(a.ends_with(&["Bash(npm run check:*)".into(), "Bash(npm test:*)".into()]));
     }
 

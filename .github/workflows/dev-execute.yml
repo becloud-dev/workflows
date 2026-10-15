@@ -168,8 +168,8 @@ jobs:
         uses: $/.github/actions/dev-round
         with:
           wf: ${{ steps.cli.outputs.wf }}
+          claude_dir: ${{ steps.cli.outputs.claude_dir }}
           claude_code_oauth_token: ${{ secrets.claude_code_oauth_token }}
-          github_token: ${{ github.token }}
           repository: ${{ github.repository }}
           issue: ${{ github.event.issue.number }}
           round: "1"
@@ -188,8 +188,8 @@ jobs:
         uses: $/.github/actions/dev-round
         with:
           wf: ${{ steps.cli.outputs.wf }}
+          claude_dir: ${{ steps.cli.outputs.claude_dir }}
           claude_code_oauth_token: ${{ secrets.claude_code_oauth_token }}
-          github_token: ${{ github.token }}
           repository: ${{ github.repository }}
           issue: ${{ github.event.issue.number }}
           round: "2"
@@ -209,8 +209,8 @@ jobs:
         uses: $/.github/actions/dev-round
         with:
           wf: ${{ steps.cli.outputs.wf }}
+          claude_dir: ${{ steps.cli.outputs.claude_dir }}
           claude_code_oauth_token: ${{ secrets.claude_code_oauth_token }}
-          github_token: ${{ github.token }}
           repository: ${{ github.repository }}
           issue: ${{ github.event.issue.number }}
           round: "3"

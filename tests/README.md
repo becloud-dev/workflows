@@ -19,13 +19,13 @@ test here; their cases are those cargo tests.
 
 | Suite | What it covers |
 |---|---|
-| `agent-calls` | every claude-code-action call passes `--setting-sources user`, so no call loads the checkout's project or local settings, hooks or `CLAUDE.md` (#78); the checker fails on a missing, widened or repeated flag; the steps moved to the CLI make no claude-code-action call and run `wf` |
+| `agent-calls` | every claude-code-action call left passes `--setting-sources user` (#78); the checker fails on a missing, widened or repeated flag; the steps moved to the CLI (backlog planner, the executor's gate and rounds) make no claude-code-action call and run `wf` |
 | `bootstrap` | `templates/consumer/bootstrap.sh`: arguments, reads before writes, dry run |
 | `callers` | every template caller against the inputs, secrets and permissions of its reusable workflow (no broader scope, a workflow-level block); every permissions entry in the workflows, actions and templates has a reason comment |
 | `dev-execute` | the gate and decide steps' calls to `wf`, the findings comment of `dev-execute.yml`; the job split (the token only in `dev-publish`), the bundle verify, the push from the bundle against planted hooks and config, the pull request; the pin and base outputs the publish check reads |
 | `dev-plan-post` | "Post the plan" of `dev-plan.yml`: structure, security links, refusal comment |
 | `dev-publish-scope` | "Check the bundle against the plan" of `dev-publish`: its call to `wf executor publish-check` with the gate's pin, and that a refusal or a CLI that cannot run fails the step |
-| `dev-round` | tools and commands steps of the `dev-round` composite; the verdict step's call to `wf` and its fallback to a failed round |
+| `dev-round` | the commands step of the `dev-round` composite; the execute, check and verdict steps' calls to `wf` (the pinned claude first on `PATH`, the token, a failing call fails the step, the check call gets no consumer command) |
 | `dev-round-scope` | the scope step's call to `wf executor scope`; a failing or missing CLI leaves `scope_state=error` |
 | `dev-round-red` | the red step's call to `wf executor red`; a failing CLI leaves `red_state=error` |
 | `planner-backlog` | "Plan the backlog" of `planner-backlog.yml` (wf's exit status is the step's, the summary and the record reach the step summary) and the `setup-cli` composite (the Claude Code binary is used only when its SHA-256 and version match; the toolchain is installed explicitly, then the CLI is built `--release --locked`) |
