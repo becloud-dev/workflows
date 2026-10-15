@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# The commands step of the dev-round composite, and the execute, check and verdict steps' calls to wf
-# (the red and scope steps have their own suites).
+# The commands step of the dev-round composite, and the test-writer, implementer, check and verdict
+# steps' calls to wf (the red and scope steps have their own suites).
 . "$(dirname "$0")/../lib.sh"
 cd "$(dirname "$0")"
 W=$WORK; mkdir -p "$W/bin"
@@ -8,7 +8,7 @@ python3 -I - "$ROOT/.github/actions/dev-round/action.yml" "$W" <<'PY'
 import sys, yaml
 d = yaml.safe_load(open(sys.argv[1]))
 for s in d["runs"]["steps"]:
-    if s.get("shell") == "bash" and s.get("id") in ("execute", "commands", "check", "verdict"):
+    if s.get("shell") == "bash" and s.get("id") in ("test_write", "implement", "commands", "check", "verdict"):
         assert "${{" not in s["run"], f"expression left in run block {s['id']}"
         open(f"{sys.argv[2]}/{s['id']}.sh", "w").write(s["run"])
 PY
@@ -20,7 +20,7 @@ expect() { # name condition-exit
 newcase() { C=$W/case; rm -rf "$C"; mkdir -p "$C/tmp"; export RUNNER_TEMP=$C/tmp GITHUB_OUTPUT=$C/out; : > "$GITHUB_OUTPUT"; }
 out() { grep -E "^$1=" "$GITHUB_OUTPUT" | tail -1 | cut -d= -f2-; }
 
-echo "# execute and check: the steps run wf"
+echo "# test-writer, implementer and check: the steps run wf"
 # the allowlist (the plain git commands, the consumer's commands, refused characters), the scope of
 # each call and its inputs are cli/src/executor/calls.rs and cli/tests/executor_calls.rs
 cat > "$W/bin/wf-call" <<'STUB'
@@ -35,23 +35,33 @@ crun() { # step exit-code
   ( cd "$W" && WF="$W/bin/wf-call" CLAUDE_DIR=/pinned/claude CLAUDE_CODE_OAUTH_TOKEN=tok REPO=o/r ISSUE=13 ROUND=2 MODEL=m \
       PLAN_FILE=/p/plan.md FINDINGS_FILE=none RESULTS=/r/results.md BASE=abc CHECK='npm run check' TEST='npm test' \
       RUNNER_TEMP="$W/tmp" GITHUB_OUTPUT="$CO" bash "$W/$1.sh" > /dev/null 2>&1 ); CRC=$?; }
-crun execute 0
-[ "$CRC" = 0 ] && [ "$(head -1 "$STUB_ARGS")" = "executor execute --repo o/r --issue 13 --round 2 --model m --plan-file /p/plan.md --findings-file none --work-dir $W/tmp --github-output $CO" ] \
-  && ok || bad "execute step arguments: $(head -1 "$STUB_ARGS")"
+crun test_write 0
+[ "$CRC" = 0 ] && [ "$(head -1 "$STUB_ARGS")" = "executor test-write --repo o/r --issue 13 --round 2 --model m --plan-file /p/plan.md --findings-file none --work-dir $W/tmp --github-output $CO" ] \
+  && ok || bad "test-writer step arguments: $(head -1 "$STUB_ARGS")"
+grep -qx 'PATH0=/pinned/claude' "$STUB_ARGS" && grep -qx 'TOKEN=tok' "$STUB_ARGS" && ok \
+  || bad "test-writer step: the pinned claude and the token do not reach wf: $(cat "$STUB_ARGS")"
+crun test_write 1
+[ "$CRC" != 0 ] && ok || bad "test-writer step: a call without a valid result must fail the step, so the round stops"
+crun implement 0
+[ "$CRC" = 0 ] && [ "$(head -1 "$STUB_ARGS")" = "executor implement --repo o/r --issue 13 --round 2 --model m --plan-file /p/plan.md --findings-file none --work-dir $W/tmp --github-output $CO" ] \
+  && ok || bad "implementer step arguments: $(head -1 "$STUB_ARGS")"
 grep -qx 'PATH0=/pinned/claude' "$STUB_ARGS" && grep -qx 'TOKEN=tok' "$STUB_ARGS" && grep -qx 'TEST=npm test' "$STUB_ARGS" && ok \
-  || bad "execute step: the pinned claude, the token and the commands do not reach wf: $(cat "$STUB_ARGS")"
-crun execute 1
-[ "$CRC" != 0 ] && ok || bad "execute step: a call without a valid result must fail the step, so the commands do not run"
+  || bad "implementer step: the pinned claude, the token and the commands do not reach wf: $(cat "$STUB_ARGS")"
+crun implement 1
+[ "$CRC" != 0 ] && ok || bad "implementer step: a call without a valid result must fail the step, so the commands do not run"
 crun check 0
 [ "$CRC" = 0 ] && [ "$(head -1 "$STUB_ARGS")" = "executor check --repo o/r --issue 13 --round 2 --model m --plan-file /p/plan.md --results-file /r/results.md --base abc --work-dir $W/tmp --github-output $CO" ] \
   && ok || bad "check step arguments: $(head -1 "$STUB_ARGS")"
-python3 -I - "$ROOT/.github/actions/dev-round/action.yml" <<'PY' && ok || bad "dev-round still calls claude-code-action or keeps a token for it"
+python3 -I - "$ROOT/.github/actions/dev-round/action.yml" <<'PY' && ok || bad "dev-round still calls claude-code-action, keeps a token for it, or gives the wrong call a consumer command"
 import sys, yaml
 d = yaml.safe_load(open(sys.argv[1]))
 assert not any("claude-code-action" in str(s.get("uses", "")) for s in d["runs"]["steps"])
 assert "github_token" not in d["inputs"]
-check = [s for s in d["runs"]["steps"] if s.get("id") == "check"][0]
-assert not {"CHECK", "TEST"} & set(check["env"]), "the check call gets no consumer command"
+step = {s.get("id"): s for s in d["runs"]["steps"]}
+# the test-writer and the check call get no consumer command; only the implementer does
+assert not {"CHECK", "TEST"} & set(step["test_write"]["env"]), "the test-writer call gets a consumer command"
+assert not {"CHECK", "TEST"} & set(step["check"]["env"]), "the check call gets a consumer command"
+assert {"CHECK", "TEST"} <= set(step["implement"]["env"]), "the implementer call lacks a consumer command"
 PY
 
 echo "# commands"

@@ -84,7 +84,7 @@ pub fn decide(i: &Inputs) -> Verdict {
     let unmet: Vec<&Value> = criteria.iter().filter(|c| !met(c)).collect();
     let forced = check_exit != "0"
         || test_exit != "0"
-        || red == "green_on_base"
+        || red == "green_without_impl"
         || scope == "out_of_scope"
         || scope == "error"
         || !unmet.is_empty();
@@ -113,23 +113,26 @@ pub fn decide(i: &Inputs) -> Verdict {
     if test_exit != "0" {
         f.push_str(&format!("- the test command exited {test_exit}\n"));
     }
-    if red == "green_on_base" {
-        f.push_str("- the new tests pass on the base tree; they do not pin the change\n");
+    if red == "green_without_impl" {
+        f.push_str("- the new tests pass without the implementation; they do not pin the change\n");
     }
     if scope == "out_of_scope" {
         let paths: Vec<Value> = serde_json::from_str(&i.scope_violations).unwrap_or_default();
         let kinds: Vec<Value> = serde_json::from_str(or(&i.scope_kinds, "[]")).unwrap_or_default();
         for (n, p) in paths.iter().enumerate() {
-            if kinds.get(n).and_then(Value::as_str) == Some("changed") {
-                f.push_str(&format!(
+            match kinds.get(n).and_then(Value::as_str) {
+                Some("changed") => f.push_str(&format!(
                     "- change of {} under .github/workflows is not in the plan Files list\n",
                     interp(p)
-                ));
-            } else {
-                f.push_str(&format!(
+                )),
+                Some("test") => f.push_str(&format!(
+                    "- the implementer changed the test file {}, which only the test-writer may\n",
+                    interp(p)
+                )),
+                _ => f.push_str(&format!(
                     "- deletion of {} is not in the plan Files list\n",
                     interp(p)
-                ));
+                )),
             }
         }
     }
@@ -219,7 +222,7 @@ mod tests {
         for (set, line) in [
             (("check_exit", "2"), "- the check command exited 2"),
             (("test_exit", "1"), "- the test command exited 1"),
-            (("red_state", "green_on_base"), "do not pin the change"),
+            (("red_state", "green_without_impl"), "do not pin the change"),
             (("scope_state", "error"), "could not be read"),
         ] {
             let mut i = base();

@@ -11,7 +11,8 @@ use serde_json::{Value, json};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-const EXECUTE_PROMPT: &str = include_str!("../../../prompts/dev-execute.md");
+const TEST_WRITER_PROMPT: &str = include_str!("../../../prompts/dev-test-writer.md");
+const IMPLEMENTER_PROMPT: &str = include_str!("../../../prompts/dev-implementer.md");
 const CHECK_PROMPT: &str = include_str!("../../../prompts/dev-check.md");
 
 /// The executor's built-in tools; what it may run is narrowed by [`allowlist`].
@@ -56,14 +57,15 @@ pub fn allowlist(check: &str, test: &str) -> Result<Vec<String>> {
     Ok(rules)
 }
 
-pub fn execute_schema() -> Value {
+/// The shape the test-writer and the implementer calls return. The CLI proves the tests fail (the
+/// `red` step), so neither call reports a `red_seen` claim.
+pub fn work_schema() -> Value {
     json!({
         "type": "object",
         "additionalProperties": false,
         "properties": {
             "outcome": {"type": "string", "enum": ["done", "blocked"]},
             "summary": {"type": "string"},
-            "red_seen": {"type": "boolean"},
             "commits": {"type": "array", "items": {"type": "string"}},
             "blocked_reason": {"type": "string"}
         },
@@ -177,23 +179,26 @@ fn finish(
     }
 }
 
-/// The executor call: writes and commits the change in `repo_dir`.
+/// A work call (test-writer or implementer): `role` names it, `allow` is its permission rules, and
+/// `header` is the prompt lines before `body`. It writes and commits in `repo_dir`; the inputs it
+/// reads are copies under `work_dir`.
 #[allow(clippy::too_many_arguments)]
-pub fn execute(
+fn work_call(
     agent: &Agent,
     r: &Round,
+    role: &'static str,
+    header: &str,
+    body: &str,
+    allow: &[String],
     plan_file: &Path,
     findings_file: &str,
-    check: &str,
-    test: &str,
     env: &[(String, String)],
     github_output: &Path,
 ) -> Result<bool> {
-    let allow = allowlist(check, test)?;
     let findings = (findings_file != "none").then(|| Path::new(findings_file));
     let dir = inputs(
         r.work_dir,
-        "execute",
+        role,
         r.round,
         &[("plan.md", Some(plan_file)), ("findings.md", findings)],
     )?;
@@ -203,18 +208,16 @@ pub fn execute(
         "none".to_string()
     };
     let prompt = format!(
-        "Repository: {}\nIssue number: {}\nPlan file: {}\nFindings file: {}\nCheck command: {}\nTest command: {}\n\n{EXECUTE_PROMPT}",
+        "Repository: {}\nIssue number: {}\nPlan file: {}\nFindings file: {}\n{header}\n{body}",
         r.repo,
         r.issue,
         dir.join("plan.md").display(),
         findings_path,
-        check,
-        test
     );
     let allow: Vec<&str> = allow.iter().map(String::as_str).collect();
-    let schema = execute_schema();
+    let schema = work_schema();
     let req = Request {
-        role: "execute",
+        role,
         model: r.model,
         prompt: &prompt,
         schema: &schema,
@@ -226,8 +229,64 @@ pub fn execute(
             add_dirs: &[&dir],
         },
     };
-    let stage = format!("dev-execute-r{}", r.round);
+    let stage = format!("dev-{role}-r{}", r.round);
     finish(r, agent, &req, &|_| Vec::new(), &stage, env, github_output)
+}
+
+/// The test-writer call: writes and commits the plan's tests in `repo_dir`. It is given the file
+/// tools and the git commands of a commit, but not the consumer's check and test commands: the CLI
+/// runs the test command for the red proof, the agent does not.
+pub fn test_write(
+    agent: &Agent,
+    r: &Round,
+    plan_file: &Path,
+    findings_file: &str,
+    env: &[(String, String)],
+    github_output: &Path,
+) -> Result<bool> {
+    let allow = allowlist("", "")?;
+    work_call(
+        agent,
+        r,
+        "test-writer",
+        "",
+        TEST_WRITER_PROMPT,
+        &allow,
+        plan_file,
+        findings_file,
+        env,
+        github_output,
+    )
+}
+
+/// The implementer call: writes and commits the change in `repo_dir`, with the consumer's check and
+/// test commands added to its rules so it can reach green. It may not edit the test files; the
+/// `scope` step fails the round if it does.
+#[allow(clippy::too_many_arguments)]
+pub fn implement(
+    agent: &Agent,
+    r: &Round,
+    plan_file: &Path,
+    findings_file: &str,
+    check: &str,
+    test: &str,
+    env: &[(String, String)],
+    github_output: &Path,
+) -> Result<bool> {
+    let allow = allowlist(check, test)?;
+    let header = format!("Check command: {check}\nTest command: {test}\n");
+    work_call(
+        agent,
+        r,
+        "implementer",
+        &header,
+        IMPLEMENTER_PROMPT,
+        &allow,
+        plan_file,
+        findings_file,
+        env,
+        github_output,
+    )
 }
 
 /// The check call: judges the round's change against the plan and the recorded results.
@@ -321,9 +380,12 @@ mod tests {
 
     #[test]
     fn the_prompts_are_embedded_and_the_schemas_forbid_other_keys() {
-        assert!(EXECUTE_PROMPT.starts_with("# Development execution"));
+        assert!(TEST_WRITER_PROMPT.starts_with("# Development test-writing"));
+        assert!(IMPLEMENTER_PROMPT.starts_with("# Development implementation"));
         assert!(CHECK_PROMPT.starts_with("# Development check"));
-        assert_eq!(execute_schema()["additionalProperties"], false);
+        assert_eq!(work_schema()["additionalProperties"], false);
+        // the work calls no longer claim a red proof; the CLI's red step is the evidence
+        assert!(work_schema()["properties"].get("red_seen").is_none());
         assert_eq!(
             check_schema()["properties"]["findings"]["items"]["additionalProperties"],
             false

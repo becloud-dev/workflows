@@ -86,47 +86,44 @@ fn run(c: &Clone, test: &str, paths: &str, base: &str) -> (String, String) {
 }
 
 #[test]
-fn a_new_test_that_fails_on_the_base_is_red() {
+fn a_new_test_without_the_implementation_is_red() {
+    // the test-writer's commit only: the test expects a --shout the base greet does not have, and
+    // no implementation is present, so the test command fails (red)
     let c = clone(|d| {
         write(
             d,
             "tests/shout_test.sh",
             "test \"$(sh bin/greet --shout)\" = HI\n",
         );
-        write(
-            d,
-            "bin/greet",
-            "[ \"$1\" = --shout ] && echo HI || echo hi\n",
-        );
         commit(d, "test: shout");
     });
     let (state, text) = run(&c, TEST, "tests/*", &c.base);
     assert_eq!(state, "red");
     assert!(text.contains("test files: tests/shout_test.sh\n"), "{text}");
-    assert!(text.contains("exit code on the base tree: 1\n"), "{text}");
+    assert!(
+        text.contains("exit code without the implementation: 1\n"),
+        "{text}"
+    );
 }
 
 #[test]
-fn a_new_test_that_passes_on_the_base_is_green_on_base() {
+fn a_new_test_that_passes_without_the_implementation_is_green_without_impl() {
+    // a test that passes although no implementation was written does not pin the change
     let c = clone(|d| {
         write(d, "tests/exists_test.sh", "test -f bin/greet\n");
         commit(d, "test: exists");
     });
-    assert_eq!(run(&c, TEST, "tests/*", &c.base).0, "green_on_base");
+    assert_eq!(run(&c, TEST, "tests/*", &c.base).0, "green_without_impl");
 }
 
 #[test]
 fn lines_added_to_an_existing_test_are_checked() {
+    // a line added to an existing test, with no implementation: the new assertion fails (red)
     let c = clone(|d| {
         let p = d.join("tests/greet_test.sh");
         let mut t = std::fs::read_to_string(&p).unwrap();
         t.push_str("test \"$(sh bin/greet --shout)\" = HI\n");
         std::fs::write(p, t).unwrap();
-        write(
-            d,
-            "bin/greet",
-            "[ \"$1\" = --shout ] && echo HI || echo hi\n",
-        );
         commit(d, "test: shout line");
     });
     assert_eq!(run(&c, TEST, "tests/*", &c.base).0, "red");

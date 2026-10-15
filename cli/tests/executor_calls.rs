@@ -1,5 +1,7 @@
 //! The round's agent calls against the stub `claude`: where they run, what they may use, what they
-//! read, and what they hand to the later steps (the structured output and the run record).
+//! read, and what they hand to the later steps (the structured output and the run record). The round
+//! makes three agent-adjacent steps: a test-writer call, the CLI's red proof, then an implementer
+//! call; the two calls are here, the red proof is in executor_red.rs.
 
 mod common;
 
@@ -52,13 +54,16 @@ fn canonical(p: &Path) -> String {
     p.canonicalize().unwrap().display().to_string()
 }
 
+fn done() -> serde_json::Value {
+    json!({"outcome": "done", "summary": "s", "commits": ["abc"]})
+}
+
 #[test]
-fn the_executor_runs_in_the_checkout_with_its_commands_and_reads_copies_of_its_inputs() {
-    let done = json!({"outcome": "done", "summary": "s", "red_seen": true, "commits": ["abc"]});
-    let f = fixture(&[Answer::Output(done.clone())]);
+fn the_implementer_runs_in_the_checkout_with_its_commands_and_reads_copies_of_its_inputs() {
+    let f = fixture(&[Answer::Output(done())]);
     let findings = f.work.path().join("round-1-findings.md");
     std::fs::write(&findings, "Round 1 check findings:\n").unwrap();
-    let ok = calls::execute(
+    let ok = calls::implement(
         &f.stubs.agent(),
         &f.round(),
         &f.plan,
@@ -81,7 +86,7 @@ fn the_executor_runs_in_the_checkout_with_its_commands_and_reads_copies_of_its_i
     let inputs = f.arg_after("--add-dir");
     assert_eq!(
         inputs,
-        canonical(&f.work.path().join("agent-inputs-execute-r2"))
+        canonical(&f.work.path().join("agent-inputs-implementer-r2"))
     );
     let prompt = f.arg_after("-p");
     assert!(
@@ -90,9 +95,9 @@ fn the_executor_runs_in_the_checkout_with_its_commands_and_reads_copies_of_its_i
     );
     assert!(prompt.contains(&format!("Findings file: {inputs}/findings.md\n")));
     assert!(prompt.contains("Test command: npm test\n"));
-    assert!(prompt.contains("# Development execution"));
+    assert!(prompt.contains("# Development implementation"));
     assert!(Path::new(&inputs).join("findings.md").exists());
-    // no token but the model's own reaches the executor
+    // no token but the model's own reaches the implementer
     let env = f.stubs.env_names(1);
     for secret in [
         "GH_TOKEN",
@@ -106,11 +111,47 @@ fn the_executor_runs_in_the_checkout_with_its_commands_and_reads_copies_of_its_i
         );
     }
     let out = std::fs::read_to_string(f.output()).unwrap();
-    assert_eq!(out, format!("structured_output={done}\n"));
+    assert_eq!(out, format!("structured_output={}\n", done()));
     assert!(
         f.work
             .path()
-            .join("run-record-dev-execute-r2.json")
+            .join("run-record-dev-implementer-r2.json")
+            .exists()
+    );
+}
+
+#[test]
+fn the_test_writer_has_no_consumer_commands_and_reads_the_plan() {
+    let f = fixture(&[Answer::Output(done())]);
+    let ok = calls::test_write(
+        &f.stubs.agent(),
+        &f.round(),
+        &f.plan,
+        "none",
+        &[],
+        &f.output(),
+    )
+    .unwrap();
+    assert!(ok);
+    assert_eq!(f.arg_after("--tools"), "Read,Edit,Write,Grep,Glob,Bash");
+    // the git commands of a commit, but not the consumer's check or test command
+    let allow = f.arg_after("--allowedTools");
+    assert!(allow.ends_with("Bash(git rm:*)"), "{allow}");
+    assert!(!allow.contains("npm"), "{allow}");
+    let inputs = f.arg_after("--add-dir");
+    assert_eq!(
+        inputs,
+        canonical(&f.work.path().join("agent-inputs-test-writer-r2"))
+    );
+    let prompt = f.arg_after("-p");
+    assert!(prompt.contains("# Development test-writing"), "{prompt}");
+    assert!(prompt.contains("Findings file: none\n"));
+    // the test-writer does not run the test command, so the prompt names none
+    assert!(!prompt.contains("Test command:"), "{prompt}");
+    assert!(
+        f.work
+            .path()
+            .join("run-record-dev-test-writer-r2.json")
             .exists()
     );
 }
@@ -121,7 +162,7 @@ fn a_first_round_has_no_findings_file() {
         json!({"outcome": "blocked", "summary": "s", "blocked_reason": "r"}),
     )]);
     assert!(
-        calls::execute(
+        calls::implement(
             &f.stubs.agent(),
             &f.round(),
             &f.plan,
@@ -141,7 +182,7 @@ fn a_first_round_has_no_findings_file() {
 fn a_command_that_could_widen_its_rule_stops_before_any_call() {
     let f = fixture(&[]);
     assert!(
-        calls::execute(
+        calls::implement(
             &f.stubs.agent(),
             &f.round(),
             &f.plan,
@@ -197,7 +238,7 @@ fn the_check_reads_only_and_a_result_that_contradicts_itself_is_asked_again() {
 fn a_call_without_a_valid_result_writes_no_output_and_says_why() {
     let f = fixture(&[Answer::Exit(1, "boom")]);
     assert!(
-        !calls::execute(
+        !calls::implement(
             &f.stubs.agent(),
             &f.round(),
             &f.plan,
@@ -211,7 +252,7 @@ fn a_call_without_a_valid_result_writes_no_output_and_says_why() {
     );
     assert!(!f.output().exists());
     let record: serde_json::Value = serde_json::from_slice(
-        &std::fs::read(f.work.path().join("run-record-dev-execute-r2.json")).unwrap(),
+        &std::fs::read(f.work.path().join("run-record-dev-implementer-r2.json")).unwrap(),
     )
     .unwrap();
     assert_eq!(record["ok"], false);

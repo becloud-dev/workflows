@@ -1,6 +1,8 @@
-//! The red check of a round: the test files the change added lines to must fail on the base tree.
-//! The test command runs in a worktree of the base with those files taken from HEAD; a pass there
-//! means the new tests do not pin the change, and the verdict fails the round.
+//! The red proof of a round: after the test-writer call and before the implementer call, the test
+//! command runs on the checkout as it then is — the plan's tests present, no implementation yet.
+//! The new tests must fail (`red`); a pass (`green_without_impl`) means they do not pin the change,
+//! and the verdict fails the round. The commits are separate (test-writer, then implementer), so
+//! this is the tests measured without the implementation, with no base worktree to reconstruct.
 
 use anyhow::{Context, Result};
 use std::fs::File;
@@ -13,8 +15,9 @@ pub enum State {
     /// No test file with added lines, no test command or no test paths configured.
     None,
     Red,
-    GreenOnBase,
-    /// The diff, the worktree or the checkout of the test files failed.
+    /// The new tests pass with no implementation written: they do not pin the change.
+    GreenWithoutImpl,
+    /// The diff or the test run could not be made.
     Error,
 }
 
@@ -23,7 +26,7 @@ impl State {
         match self {
             State::None => "none",
             State::Red => "red",
-            State::GreenOnBase => "green_on_base",
+            State::GreenWithoutImpl => "green_without_impl",
             State::Error => "error",
         }
     }
@@ -99,17 +102,6 @@ pub fn test_files(numstat: &str, test_paths: &str) -> Vec<String> {
         .collect()
 }
 
-fn git(dir: &Path, args: &[&str], log: &File) -> Result<bool> {
-    Ok(Command::new("git")
-        .current_dir(dir)
-        .args(args)
-        .stdin(Stdio::null())
-        .stdout(log.try_clone()?)
-        .stderr(log.try_clone()?)
-        .status()?
-        .success())
-}
-
 /// The last 30 lines of `text`, then its last 2000 bytes, without trailing newlines, as the shell
 /// step's `$(tail -n 30 | tail -c 2000)` printed them.
 fn tail(text: &str) -> String {
@@ -122,8 +114,9 @@ fn tail(text: &str) -> String {
         .to_string()
 }
 
-/// Runs the check in `repo_dir` for the commits from `base` to HEAD, with the worktree and log in
-/// `work_dir`; appends the section to `results` and `red_state` to `github_output`.
+/// Runs the test command in `repo_dir` as it is now (the test-writer's commits from `base` to HEAD,
+/// no implementation), with the log in `work_dir`; appends the section to `results` and `red_state`
+/// to `github_output`.
 #[allow(clippy::too_many_arguments)]
 pub fn run(
     repo_dir: &Path,
@@ -156,58 +149,30 @@ pub fn run(
             state.as_str()
         )
     } else {
-        let tree = work_dir.join(format!("base-tree-{round}"));
+        // run the test command on the checkout as it is: the tests are committed, no implementation
+        // yet, so a pass means they do not pin the change
         let log_path = work_dir.join(format!("red-{round}.log"));
         let log = File::create(&log_path)
             .with_context(|| format!("cannot create {}", log_path.display()))?;
-        let tree_s = tree.to_string_lossy().to_string();
-        let head = String::from_utf8_lossy(
-            &Command::new("git")
-                .current_dir(repo_dir)
-                .args(["rev-parse", "HEAD"])
-                .output()?
-                .stdout,
-        )
-        .trim()
-        .to_string();
-        let mut code = None;
-        let mut checkout = vec!["-C", &tree_s, "checkout", &head, "--"];
-        checkout.extend(files.iter().map(String::as_str));
-        if git(
-            repo_dir,
-            &["worktree", "add", "--detach", &tree_s, base],
-            &log,
-        )? && git(repo_dir, &checkout, &log)?
-        {
-            let status = Command::new("bash")
-                .current_dir(&tree)
-                .args(["-c", test])
-                .stdin(Stdio::null())
-                .stdout(log.try_clone()?)
-                .stderr(log.try_clone()?)
-                .status()?;
-            let c = status.code().unwrap_or(1);
-            state = if c == 0 {
-                State::GreenOnBase
-            } else {
-                State::Red
-            };
-            code = Some(c);
-        } else {
-            state = State::Error;
-        }
-        let _ = Command::new("git")
+        let status = Command::new("bash")
             .current_dir(repo_dir)
-            .args(["worktree", "remove", "--force", &tree_s])
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status();
+            .args(["-c", test])
+            .stdin(Stdio::null())
+            .stdout(log.try_clone()?)
+            .stderr(log.try_clone()?)
+            .status()?;
+        let code = status.code().unwrap_or(1);
+        state = if code == 0 {
+            State::GreenWithoutImpl
+        } else {
+            State::Red
+        };
         let text = std::fs::read_to_string(&log_path).unwrap_or_default();
         format!(
-            "### red check\nstate: {}\ntest files: {}\nexit code on the base tree: {}\n```\n{}\n```\n\n",
+            "### red check\nstate: {}\ntest files: {}\nexit code without the implementation: {}\n```\n{}\n```\n\n",
             state.as_str(),
             files.join(" "),
-            code.map_or("n/a".to_string(), |c| c.to_string()),
+            code,
             tail(&text)
         )
     };

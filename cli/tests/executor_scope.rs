@@ -63,7 +63,9 @@ impl Repo {
         let tmp = tempfile::tempdir().unwrap();
         let results = tmp.path().join("results.md");
         let outputs = tmp.path().join("output");
-        assert!(scope::run(self.dir.path(), base, plan_file, &results, &outputs).unwrap());
+        // the plan-Files cases use no test-writer boundary; the implementer-tests case calls
+        // scope::run directly with one
+        assert!(scope::run(self.dir.path(), base, plan_file, "", "", &results, &outputs).unwrap());
         let out = std::fs::read_to_string(outputs).unwrap();
         let get = |k: &str| {
             out.lines()
@@ -184,4 +186,54 @@ fn nothing_deleted_and_no_workflow_changed_is_none() {
     let r = Repo::new(&["src/a.rs"], |d| put(d, "src/b.rs"));
     let (state, v, _, _) = r.check(&format!("{HEAD}- `src/zzz.rs`\n"));
     assert_eq!((state.as_str(), v.as_str()), ("none", "[]"));
+}
+
+#[test]
+fn a_test_file_the_implementer_changed_is_out_of_scope() {
+    // base, then the test-writer's commit (TW_SHA), then the implementer's commit editing a test
+    // file. Only the test-writer may touch the tests, so the change between TW_SHA and HEAD over the
+    // test paths is a violation whether or not the plan names the file.
+    let dir = tempfile::tempdir().unwrap();
+    git(dir.path(), &["init", "-q", "-b", "main"]);
+    put(dir.path(), "src/a.rs");
+    put(dir.path(), "tests/a_test.sh");
+    git(dir.path(), &["add", "-A"]);
+    git(dir.path(), &["commit", "-q", "-m", "base"]);
+    let base = git(dir.path(), &["rev-parse", "HEAD"]);
+    // the test-writer adds a test
+    std::fs::write(dir.path().join("tests/b_test.sh"), "exit 1\n").unwrap();
+    git(dir.path(), &["add", "-A"]);
+    git(dir.path(), &["commit", "-q", "-m", "test: b"]);
+    let tw = git(dir.path(), &["rev-parse", "HEAD"]);
+    // the implementer then edits a test file and the implementation
+    std::fs::write(dir.path().join("tests/a_test.sh"), "changed\n").unwrap();
+    std::fs::write(dir.path().join("src/a.rs"), "impl\n").unwrap();
+    git(dir.path(), &["add", "-A"]);
+    git(dir.path(), &["commit", "-q", "-m", "feat: a"]);
+
+    let tmp = tempfile::tempdir().unwrap();
+    let results = tmp.path().join("results.md");
+    let outputs = tmp.path().join("output");
+    let plan = tmp.path().join("plan.md");
+    // the plan names every file, so only the test-touch rule can fail the round
+    std::fs::write(
+        &plan,
+        format!("{HEAD}- `src/a.rs`\n- `tests/a_test.sh`\n- `tests/b_test.sh`\n"),
+    )
+    .unwrap();
+    assert!(scope::run(dir.path(), &base, &plan, &tw, "tests/*", &results, &outputs).unwrap());
+    let out = std::fs::read_to_string(&outputs).unwrap();
+    assert!(out.contains("scope_state=out_of_scope"), "{out}");
+    assert!(
+        out.contains(r#"scope_violations=["tests/a_test.sh"]"#),
+        "{out}"
+    );
+    assert!(out.contains(r#"scope_violation_kinds=["test"]"#), "{out}");
+    let text = std::fs::read_to_string(&results).unwrap();
+    assert!(
+        text.contains(
+            "a test file the implementer changed (only the test-writer may):\n- tests/a_test.sh\n"
+        ),
+        "{text}"
+    );
 }
