@@ -68,7 +68,7 @@ pub fn check(
     let Some((deleted, changed)) = changes else {
         return vec!["the changes in the bundle could not be read".to_string()];
     };
-    scope::check(Some(&files), &deleted, &changed)
+    scope::check(Some(&files), &deleted, &changed, &[])
         .violations
         .into_iter()
         .map(|(path, kind)| match kind {
@@ -80,6 +80,8 @@ pub fn check(
                     "changed under .github/workflows but not named in the plan Files list: {path}"
                 )
             }
+            // publish-check passes no implementer test paths, so this kind never arises here
+            scope::Kind::Test => unreachable!("publish-check does not check implementer tests"),
         })
         .collect()
 }

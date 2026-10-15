@@ -59,7 +59,9 @@ enum Executor {
         #[arg(long)]
         github_output: PathBuf,
     },
-    /// Check the round's deletions and workflow changes against the plan's Files list.
+    /// Check the round's deletions and workflow changes against the plan's Files list, and refuse a
+    /// test file the implementer changed. `TEST_BOUNDARY` (the commit after the test-writer) and
+    /// `TEST_PATHS` are read from the environment.
     Scope {
         /// The checkout the round worked in.
         #[arg(long, default_value = ".")]
@@ -113,9 +115,32 @@ enum Executor {
         #[arg(long)]
         plan_file: PathBuf,
     },
-    /// The executor call of a round: writes and commits the change in the checkout. The check and
-    /// test commands are read from `CHECK` and `TEST`.
-    Execute {
+    /// The test-writer call of a round: writes and commits the plan's tests in the checkout. It is
+    /// not given the consumer commands; the CLI runs the test command for the red proof.
+    TestWrite {
+        /// owner/repo
+        #[arg(long)]
+        repo: String,
+        #[arg(long)]
+        issue: String,
+        #[arg(long)]
+        round: String,
+        #[arg(long)]
+        model: String,
+        #[arg(long)]
+        plan_file: PathBuf,
+        /// The previous round's findings, or `none`.
+        #[arg(long, default_value = "none")]
+        findings_file: String,
+        /// Where the inputs and the run record are written (`$RUNNER_TEMP`).
+        #[arg(long)]
+        work_dir: PathBuf,
+        #[arg(long)]
+        github_output: PathBuf,
+    },
+    /// The implementer call of a round: writes and commits the change in the checkout so the tests
+    /// pass. The check and test commands are read from `CHECK` and `TEST`.
+    Implement {
         /// owner/repo
         #[arg(long)]
         repo: String,
@@ -227,7 +252,15 @@ fn main() -> ExitCode {
             plan_file,
             results,
             github_output,
-        }) => scope::run(&repo_dir, &base, &plan_file, &results, &github_output),
+        }) => scope::run(
+            &repo_dir,
+            &base,
+            &plan_file,
+            &var("TEST_BOUNDARY"),
+            &var("TEST_PATHS"),
+            &results,
+            &github_output,
+        ),
         Command::Executor(Executor::PublishCheck {
             repo,
             issue,
@@ -264,7 +297,7 @@ fn main() -> ExitCode {
             },
             &plan_file,
         ),
-        Command::Executor(Executor::Execute {
+        Command::Executor(Executor::TestWrite {
             repo,
             issue,
             round,
@@ -275,7 +308,34 @@ fn main() -> ExitCode {
             github_output,
         }) => {
             let env: Vec<(String, String)> = std::env::vars().collect();
-            calls::execute(
+            calls::test_write(
+                &Agent::from_env(),
+                &calls::Round {
+                    repo: &repo,
+                    issue: &issue,
+                    round: &round,
+                    model: &model,
+                    repo_dir: std::path::Path::new("."),
+                    work_dir: &work_dir,
+                },
+                &plan_file,
+                &findings_file,
+                &env,
+                &github_output,
+            )
+        }
+        Command::Executor(Executor::Implement {
+            repo,
+            issue,
+            round,
+            model,
+            plan_file,
+            findings_file,
+            work_dir,
+            github_output,
+        }) => {
+            let env: Vec<(String, String)> = std::env::vars().collect();
+            calls::implement(
                 &Agent::from_env(),
                 &calls::Round {
                     repo: &repo,

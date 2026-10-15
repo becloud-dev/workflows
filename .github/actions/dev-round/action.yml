@@ -1,5 +1,5 @@
 name: dev-round
-description: One development round, execute, run check and test, check; the agent calls are made by the wf CLI
+description: One development round, test-writer, red proof, implementer, run check and test, check; the agent calls are made by the wf CLI
 inputs:
   claude_code_oauth_token: {required: true}
   repository: {required: true}
@@ -18,7 +18,7 @@ inputs:
   check_model: {required: true}
   check_command: {required: false, default: ""}
   test_command: {required: false, default: ""}
-  test_paths: {required: false, default: "", description: "Comma-separated globs of test files; empty turns the red check off"}
+  test_paths: {required: false, default: "", description: "Comma-separated globs of test files; empty turns the red proof off"}
 outputs:
   outcome:
     description: done, blocked or failed
@@ -28,16 +28,68 @@ outputs:
     value: ${{ steps.verdict.outputs.verdict }}
   findings_file:
     value: ${{ steps.verdict.outputs.findings_file }}
-  execute_record_path:
-    value: ${{ runner.temp }}/run-record-dev-execute-r${{ inputs.round }}.json
+  test_writer_record_path:
+    value: ${{ runner.temp }}/run-record-dev-test-writer-r${{ inputs.round }}.json
+  implementer_record_path:
+    value: ${{ runner.temp }}/run-record-dev-implementer-r${{ inputs.round }}.json
   check_record_path:
     value: ${{ runner.temp }}/run-record-dev-check-r${{ inputs.round }}.json
 runs:
   using: composite
   steps:
-    # the executor call: the CLI runs the pinned claude with the file tools, plain git commits and the
-    # consumer's check and test commands only, in the checkout, with copies of the plan and findings
-    - id: execute
+    # the test-writer call: the CLI runs the pinned claude with the file tools and plain git commits
+    # only (not the consumer commands), in the checkout, with copies of the plan and findings. It
+    # writes the plan's tests and commits them; the implementation is a later call.
+    - id: test_write
+      shell: bash
+      env:
+        CLAUDE_CODE_OAUTH_TOKEN: ${{ inputs.claude_code_oauth_token }}
+        WF: ${{ inputs.wf }}
+        CLAUDE_DIR: ${{ inputs.claude_dir }}
+        REPO: ${{ inputs.repository }}
+        ISSUE: ${{ inputs.issue }}
+        ROUND: ${{ inputs.round }}
+        MODEL: ${{ inputs.execute_model }}
+        PLAN_FILE: ${{ inputs.plan_file }}
+        FINDINGS_FILE: ${{ inputs.findings_file }}
+      run: |
+        set -euo pipefail
+        PATH="$CLAUDE_DIR:$PATH" "$WF" executor test-write --repo "$REPO" --issue "$ISSUE" --round "$ROUND" \
+          --model "$MODEL" --plan-file "$PLAN_FILE" --findings-file "$FINDINGS_FILE" --work-dir "$RUNNER_TEMP" \
+          --github-output "$GITHUB_OUTPUT"
+
+    # the commit the test-writer left: the boundary the scope step uses to refuse a test file the
+    # implementer changes, and the point the red proof measures from
+    - id: boundary
+      if: steps.test_write.outcome == 'success' && fromJSON(steps.test_write.outputs.structured_output || '{}').outcome == 'done'
+      shell: bash
+      run: echo "test_boundary=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+    # the red proof: with the tests committed and no implementation yet, the test command must fail
+    # (red); a pass (green_without_impl) means the tests do not pin the change and the verdict fails
+    # the round. Run before the implementer so the proof is the tests measured without the code.
+    - id: red
+      if: steps.boundary.outcome == 'success'
+      shell: bash
+      env:
+        TEST: ${{ inputs.test_command }}
+        TEST_PATHS: ${{ inputs.test_paths }}
+        BASE: ${{ inputs.base }}
+        ROUND: ${{ inputs.round }}
+        WF: ${{ inputs.wf }}
+      run: |
+        set -uo pipefail
+        results="$RUNNER_TEMP/round-$ROUND-results.md"
+        : > "$results"  # fresh results for this round; the later steps append their sections
+        # the CLI reads TEST and TEST_PATHS from the environment; an error state does not fail the round
+        "$WF" executor red --base "$BASE" --round "$ROUND" --work-dir "$RUNNER_TEMP" --results "$results" \
+          --github-output "$GITHUB_OUTPUT" || echo "red_state=error" >> "$GITHUB_OUTPUT"
+
+    # the implementer call: the CLI runs the pinned claude with the file tools, plain git commits and
+    # the consumer's check and test commands, in the checkout, with copies of the plan and findings.
+    # It may not edit the test files; the scope step fails the round if it does.
+    - id: implement
+      if: steps.boundary.outcome == 'success'
       shell: bash
       env:
         CLAUDE_CODE_OAUTH_TOKEN: ${{ inputs.claude_code_oauth_token }}
@@ -53,12 +105,12 @@ runs:
         FINDINGS_FILE: ${{ inputs.findings_file }}
       run: |
         set -euo pipefail
-        PATH="$CLAUDE_DIR:$PATH" "$WF" executor execute --repo "$REPO" --issue "$ISSUE" --round "$ROUND" \
+        PATH="$CLAUDE_DIR:$PATH" "$WF" executor implement --repo "$REPO" --issue "$ISSUE" --round "$ROUND" \
           --model "$MODEL" --plan-file "$PLAN_FILE" --findings-file "$FINDINGS_FILE" --work-dir "$RUNNER_TEMP" \
           --github-output "$GITHUB_OUTPUT"
 
     - id: commands
-      if: steps.execute.outcome == 'success' && fromJSON(steps.execute.outputs.structured_output || '{}').outcome == 'done'
+      if: steps.implement.outcome == 'success' && fromJSON(steps.implement.outputs.structured_output || '{}').outcome == 'done'
       shell: bash
       env:
         CHECK: ${{ inputs.check_command }}
@@ -78,39 +130,21 @@ runs:
             "$name" "$cmd" "$code" "$(tail -n 60 "$log" | tail -c 4000)" >> "$out"
           echo "${name}_exit=$code" >> "$GITHUB_OUTPUT"
         }
-        : > "$out"
         run_one check "$CHECK"
         run_one test "$TEST"
         echo "results_file=$out" >> "$GITHUB_OUTPUT"
 
-    # the new tests must fail on the base tree: run the test command there with the test files
-    # of this change that have added lines (a file that only lost lines is skipped) and record the
-    # exit code; a pass on the base forces fail in the verdict step
-    - id: red
-      if: steps.commands.outcome == 'success'
-      shell: bash
-      env:
-        TEST: ${{ inputs.test_command }}
-        TEST_PATHS: ${{ inputs.test_paths }}
-        BASE: ${{ inputs.base }}
-        ROUND: ${{ inputs.round }}
-        RESULTS: ${{ steps.commands.outputs.results_file }}
-        WF: ${{ inputs.wf }}
-      run: |
-        set -uo pipefail
-        # the CLI reads TEST and TEST_PATHS from the environment; an error state does not fail the round
-        "$WF" executor red --base "$BASE" --round "$ROUND" --work-dir "$RUNNER_TEMP" --results "$RESULTS" \
-          --github-output "$GITHUB_OUTPUT" || echo "red_state=error" >> "$GITHUB_OUTPUT"
-
-    # every deleted path, and every added, modified or renamed-to path under .github/workflows, must be
-    # named in the plan's Files list; a path outside it, or a diff or plan that cannot be read (error),
-    # makes the verdict step fail the round
+    # every deleted path, every added, modified or renamed-to path under .github/workflows not named
+    # in the plan's Files list, and every test file the implementer changed (between the boundary and
+    # HEAD, matching TEST_PATHS), makes the verdict step fail the round
     - id: scope
       if: steps.commands.outcome == 'success'
       shell: bash
       env:
         PLAN_FILE: ${{ inputs.plan_file }}
         BASE: ${{ inputs.base }}
+        TEST_BOUNDARY: ${{ steps.boundary.outputs.test_boundary }}
+        TEST_PATHS: ${{ inputs.test_paths }}
         RESULTS: ${{ steps.commands.outputs.results_file }}
         WF: ${{ inputs.wf }}
       run: |
@@ -145,7 +179,9 @@ runs:
       if: always()
       shell: bash
       env:
-        EXECUTE: ${{ steps.execute.outputs.structured_output }}
+        # the round's outcome is the implementer's, or the test-writer's when it blocked before the
+        # implementer ran
+        EXECUTE: ${{ steps.implement.outputs.structured_output || steps.test_write.outputs.structured_output }}
         CHECK: ${{ steps.check.outputs.structured_output }}
         CHECK_EXIT: ${{ steps.commands.outputs.check_exit }}
         TEST_EXIT: ${{ steps.commands.outputs.test_exit }}

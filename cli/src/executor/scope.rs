@@ -34,6 +34,8 @@ impl State {
 pub enum Kind {
     Deleted,
     Changed,
+    /// A test file the implementer changed; only the test-writer may touch the tests.
+    Test,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -43,7 +45,14 @@ pub struct Report {
 }
 
 /// Judges the diff against the plan. `files` is `None` when the plan could not be read.
-pub fn check(files: Option<&[String]>, deleted: &[String], changed: &[String]) -> Report {
+/// `impl_tests` are test files the implementer changed; the implementer may touch none, so each is
+/// a violation whether or not the plan names it.
+pub fn check(
+    files: Option<&[String]>,
+    deleted: &[String],
+    changed: &[String],
+    impl_tests: &[String],
+) -> Report {
     let Some(files) = files else {
         return Report {
             state: State::Error,
@@ -56,6 +65,9 @@ pub fn check(files: Option<&[String]>, deleted: &[String], changed: &[String]) -
     }
     for c in changed.iter().filter(|c| !plan::names(files, c)) {
         violations.push((c.clone(), Kind::Changed));
+    }
+    for t in impl_tests {
+        violations.push((t.clone(), Kind::Test));
     }
     let state = if !violations.is_empty() {
         State::OutOfScope
@@ -141,6 +153,10 @@ pub fn render(report: &Report) -> String {
                     Kind::Changed,
                     "changed under .github/workflows but not named in the plan Files list:",
                 ),
+                (
+                    Kind::Test,
+                    "a test file the implementer changed (only the test-writer may):",
+                ),
             ] {
                 let paths = of(kind);
                 if !paths.is_empty() {
@@ -158,22 +174,52 @@ pub fn render(report: &Report) -> String {
     s
 }
 
+/// The test files the implementer changed: paths in `test_boundary..HEAD` (the commits after the
+/// test-writer) that match one of the comma-separated `test_paths` globs. Empty when no boundary or
+/// no test paths are given; `None` when the diff cannot be read, so the caller fails closed.
+fn implementer_tests(
+    repo_dir: &Path,
+    test_boundary: &str,
+    test_paths: &str,
+) -> Option<Vec<String>> {
+    if test_boundary.is_empty() || test_paths.is_empty() {
+        return Some(Vec::new());
+    }
+    let globs: Vec<&str> = test_paths.split(',').collect();
+    let range = format!("{test_boundary}..HEAD");
+    let changed = diff_names(&Repo::Checkout(repo_dir), &["--diff-filter=AMD", &range])?;
+    Some(
+        changed
+            .into_iter()
+            .filter(|p| globs.iter().any(|g| super::red::glob_match(g, p)))
+            .collect(),
+    )
+}
+
 /// Runs the check for the commits between `base` and HEAD of the repository at `repo_dir`, appends
 /// the section to `results` and the outputs (`scope_state`, `scope_violations`,
-/// `scope_violation_kinds`) to `github_output`.
+/// `scope_violation_kinds`) to `github_output`. `test_boundary` is the commit after the test-writer
+/// call (empty when not split): a test file changed after it was the implementer's, which is a
+/// violation.
 pub fn run(
     repo_dir: &Path,
     base: &str,
     plan_file: &Path,
+    test_boundary: &str,
+    test_paths: &str,
     results: &Path,
     github_output: &Path,
 ) -> Result<bool> {
     let files = std::fs::read_to_string(plan_file)
         .ok()
         .and_then(|plan| plan::files(&plan).ok());
-    let report = match (files, changes(&Repo::Checkout(repo_dir), base, "HEAD")) {
-        (Some(f), Some((d, c))) => check(Some(&f), &d, &c),
-        _ => check(None, &[], &[]),
+    let report = match (
+        files,
+        changes(&Repo::Checkout(repo_dir), base, "HEAD"),
+        implementer_tests(repo_dir, test_boundary, test_paths),
+    ) {
+        (Some(f), Some((d, c)), Some(t)) => check(Some(&f), &d, &c, &t),
+        _ => check(None, &[], &[], &[]),
     };
     let mut r = std::fs::OpenOptions::new()
         .create(true)
@@ -188,6 +234,7 @@ pub fn run(
         .map(|(_, k)| match k {
             Kind::Deleted => "deleted",
             Kind::Changed => "changed",
+            Kind::Test => "test",
         })
         .collect();
     let mut out = std::fs::OpenOptions::new()
@@ -216,6 +263,7 @@ mod tests {
             Some(&files),
             &list(&["src/old.rs", "src/other.rs"]),
             &list(&[".github/workflows/ci.yml", ".github/workflows/new.yml"]),
+            &[],
         );
         assert_eq!(r.state, State::OutOfScope);
         assert_eq!(
@@ -231,15 +279,15 @@ mod tests {
     fn named_paths_are_ok_and_an_empty_diff_is_none() {
         let files = list(&["docs/"]);
         assert_eq!(
-            check(Some(&files), &list(&["docs/a.md"]), &[]).state,
+            check(Some(&files), &list(&["docs/a.md"]), &[], &[]).state,
             State::Ok
         );
-        assert_eq!(check(Some(&files), &[], &[]).state, State::None);
+        assert_eq!(check(Some(&files), &[], &[], &[]).state, State::None);
     }
 
     #[test]
     fn an_unreadable_plan_is_an_error_not_a_pass() {
-        assert_eq!(check(None, &list(&["x"]), &[]).state, State::Error);
+        assert_eq!(check(None, &list(&["x"]), &[], &[]).state, State::Error);
     }
 
     #[test]
@@ -248,6 +296,7 @@ mod tests {
             Some(&[]),
             &list(&["a"]),
             &list(&[".github/workflows/b.yml"]),
+            &[],
         );
         let text = render(&r);
         assert!(text.contains("state: out_of_scope\n"));

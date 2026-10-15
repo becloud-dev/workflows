@@ -20,7 +20,8 @@ done
 # the executor's rounds: the composite makes its calls through wf, not claude-code-action
 f=$ROOT/.github/actions/dev-round/action.yml
 ! grep -q 'anthropics/claude-code-action@' "$f" && ok || bad "dev-round still calls claude-code-action"
-grep -q '"$WF" executor execute ' "$f" && grep -q '"$WF" executor check ' "$f" && ok || bad "dev-round does not run wf executor execute and check"
+grep -q '"$WF" executor test-write ' "$f" && grep -q '"$WF" executor implement ' "$f" && grep -q '"$WF" executor check ' "$f" \
+  && ok || bad "dev-round does not run wf executor test-write, implement and check"
 
 # The checker must be able to fail: the same workflow with the flag missing, widened, and given twice.
 for case in missing widened twice; do
