@@ -3,7 +3,8 @@
 # answer-<n>.json is printed on stdout by call n, exit-<n> holds its exit code (0 when absent) and
 # stderr-<n> what it prints on stderr. The agent's environment is cleared, so the stub finds them
 # next to itself, not through a variable. It records what call n got: its arguments (NUL-separated),
-# its environment (NUL-separated), what stdin is, and the files in its working directory.
+# its environment (NUL-separated), what stdin is, the files in its working directory and that
+# directory.
 set -u
 dir=$(cd "$(dirname "$0")" && pwd)
 n=$(( $(cat "$dir/count" 2>/dev/null || echo 0) + 1 ))
@@ -12,6 +13,7 @@ printf '%s\0' "$@" > "$dir/call-$n.args"
 env -0 > "$dir/call-$n.env"
 readlink /proc/self/fd/0 > "$dir/call-$n.stdin"
 ls -A > "$dir/call-$n.files"
+pwd -P > "$dir/call-$n.cwd"
 [ -f "$dir/stderr-$n" ] && cat "$dir/stderr-$n" >&2
 [ -f "$dir/answer-$n.json" ] && cat "$dir/answer-$n.json"
 exit "$(cat "$dir/exit-$n" 2>/dev/null || echo 0)"
