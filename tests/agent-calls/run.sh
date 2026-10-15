@@ -8,7 +8,7 @@ cd "$(dirname "$0")"
 
 out=$(python3 -I agent_calls.py "$ROOT"); rc=$?
 [ "$rc" = 0 ] && ok || bad "agent calls: $(printf '%s\n' "$out" | grep '^FAIL' | head -3 | tr '\n' ' ')"
-[ "$(printf '%s\n' "$out" | grep -c '^OK')" -ge 9 ] && ok || bad "fewer than 9 agent calls checked"
+[ "$(printf '%s\n' "$out" | grep -c '^OK')" -ge 7 ] && ok || bad "fewer than 7 agent calls checked"
 
 # Steps on the CLI: no claude-code-action call, the CLI built by setup-cli and run.
 for step in planner-backlog:'planner backlog' dev-execute:'executor gate'; do
@@ -17,7 +17,10 @@ for step in planner-backlog:'planner backlog' dev-execute:'executor gate'; do
   grep -q 'uses: \$/.github/actions/setup-cli$' "$f" && ok || bad "${step%%:*} does not set up the CLI"
   grep -q "\"\$WF\" $cmd " "$f" && ok || bad "${step%%:*} does not run wf $cmd"
 done
-printf '%s\n' "$out" | grep -q 'dev-round/action.yml -/' && ok || bad "the composite action's calls are not checked"
+# the executor's rounds: the composite makes its calls through wf, not claude-code-action
+f=$ROOT/.github/actions/dev-round/action.yml
+! grep -q 'anthropics/claude-code-action@' "$f" && ok || bad "dev-round still calls claude-code-action"
+grep -q '"$WF" executor execute ' "$f" && grep -q '"$WF" executor check ' "$f" && ok || bad "dev-round does not run wf executor execute and check"
 
 # The checker must be able to fail: the same workflow with the flag missing, widened, and given twice.
 for case in missing widened twice; do

@@ -21,6 +21,8 @@ set up the CLI and run it.
 | --- | --- |
 | `wf planner backlog --repo <owner/repo> --model <id> --out <dir>` | Orders the open issues and reports parents, blockers, duplicates and gaps. Writes nothing on GitHub |
 | `wf executor gate --repo <owner/repo> --issue <n> --owners <logins> --plan-file <f> --github-output <f>` | Reads an `/approve` comment (body in `COMMENT_BODY`): replies on the issue when it refuses, otherwise writes the plan and pins it (comment ID and body SHA-256). Replaces the gate shell step |
+| `wf executor execute --repo <owner/repo> --issue <n> --round <n> --model <id> --plan-file <f> --findings-file <f or none> --work-dir <d> --github-output <f>` | The executor call: the pinned `claude` in the checkout with the file tools, the plain git commands of a commit and the consumer's check and test commands (`CHECK`, `TEST`); reads copies of its inputs. Replaces claude-code-action in `dev-round` |
+| `wf executor check --repo <owner/repo> --issue <n> --round <n> --model <id> --plan-file <f> --results-file <f> --base <sha> --work-dir <d> --github-output <f>` | The check call: read-only tools and `git diff`/`git log`; a verdict that contradicts its findings is asked again once |
 | `wf executor plan --repo <owner/repo> --issue <n> --plan-comment-id <id> --plan-sha256 <h> --plan-file <f>` | Writes the plan the gate pinned for the rounds job, which runs on another runner; refuses a comment that changed after the approval |
 | `wf executor scope --base <sha> --plan-file <f> --results <f> --github-output <f>` | Judges a round's deletions and workflow changes against the plan's Files list; fails closed. Replaces the `scope` shell step |
 | `wf executor red --base <sha> --round <n> --work-dir <d> --results <f> --github-output <f>` | Runs the test command (`TEST`) on the base tree with the change's test files (`TEST_PATHS` globs); they must fail there. Replaces the `red` shell step |
@@ -31,8 +33,9 @@ set up the CLI and run it.
 ### Agent calls
 
 Every agent call spawns a pinned `claude -p` with `--restricted`, explicit `--tools` and
-`--allowedTools`, its own `--settings`, `--json-schema`, `--output-format json`,
-`--no-session-persistence` and stdin from `/dev/null`. A missing `structured_output` is retried
+`--allowedTools` from the call's scope (the planner's calls: `Read` only, in a directory holding
+only their inputs; the executor's: see the commands above; probes in `research/claude-code.md`),
+its own `--settings`, `--json-schema`, `--output-format json`, `--no-session-persistence` and stdin from `/dev/null`. A missing `structured_output` is retried
 once. The CLI validates the output against the schema (additional properties forbidden) and the
 rules, and writes a run record with tokens per model.
 
@@ -83,7 +86,7 @@ Each step has a review issue that holds the accepted review; its open sub-issues
 | --- | --- | --- |
 | triage | `triage format-check` and the classify, split and rewrite calls | The CLI fetches the issue so the agent has `Read` only and no token; it verifies a rewrite keeps every word and reads back its writes |
 | dev-plan | `plan gate`, `plan input`, `plan validate`, `plan render` | A research call (domains the repository lists, empty by default), a planner call and a plan reviewer call; every failed rule is named and the plan retried once |
-| dev-execute, rounds | agent calls | The execute and check calls move from claude-code-action to the CLI; then a test-writer call, a red proof by the CLI, then an implementer call |
+| dev-execute, rounds | test-writer and implementer calls | A test-writer call, a red proof by the CLI, then an implementer call (#68), in place of the single execute call |
 | dev-execute, publish | publish commands | The CLI recomputes the verdict from the recorded results instead of reading the rounds job's `verdict` output |
 | release-please | `release tag` | The major tag move, with the same checks; the token and trigger stay in YAML |
 | release-review | review commands | A correctness call and a safety call, merged by the CLI with blocking findings first; the review is identified by a `release-review` commit status on the reviewed commit, whose description is the comment body's hash |

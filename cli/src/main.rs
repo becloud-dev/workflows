@@ -1,5 +1,5 @@
 use becloud_workflows::agent::Agent;
-use becloud_workflows::executor::{decide, gate, publish, red, scope, verdict};
+use becloud_workflows::executor::{calls, decide, gate, publish, red, scope, verdict};
 use becloud_workflows::github::Gh;
 use becloud_workflows::planner::backlog;
 use clap::{Parser, Subcommand};
@@ -113,6 +113,51 @@ enum Executor {
         #[arg(long)]
         plan_file: PathBuf,
     },
+    /// The executor call of a round: writes and commits the change in the checkout. The check and
+    /// test commands are read from `CHECK` and `TEST`.
+    Execute {
+        /// owner/repo
+        #[arg(long)]
+        repo: String,
+        #[arg(long)]
+        issue: String,
+        #[arg(long)]
+        round: String,
+        #[arg(long)]
+        model: String,
+        #[arg(long)]
+        plan_file: PathBuf,
+        /// The previous round's findings, or `none`.
+        #[arg(long, default_value = "none")]
+        findings_file: String,
+        /// Where the inputs and the run record are written (`$RUNNER_TEMP`).
+        #[arg(long)]
+        work_dir: PathBuf,
+        #[arg(long)]
+        github_output: PathBuf,
+    },
+    /// The check call of a round: judges the change against the plan and the recorded results.
+    Check {
+        /// owner/repo
+        #[arg(long)]
+        repo: String,
+        #[arg(long)]
+        issue: String,
+        #[arg(long)]
+        round: String,
+        #[arg(long)]
+        model: String,
+        #[arg(long)]
+        plan_file: PathBuf,
+        #[arg(long)]
+        results_file: PathBuf,
+        #[arg(long)]
+        base: String,
+        #[arg(long)]
+        work_dir: PathBuf,
+        #[arg(long)]
+        github_output: PathBuf,
+    },
     /// Run the test command on the base tree with the change's test files; they must fail there.
     /// The command and the test path globs are read from `TEST` and `TEST_PATHS`.
     Red {
@@ -219,6 +264,64 @@ fn main() -> ExitCode {
             },
             &plan_file,
         ),
+        Command::Executor(Executor::Execute {
+            repo,
+            issue,
+            round,
+            model,
+            plan_file,
+            findings_file,
+            work_dir,
+            github_output,
+        }) => {
+            let env: Vec<(String, String)> = std::env::vars().collect();
+            calls::execute(
+                &Agent::from_env(),
+                &calls::Round {
+                    repo: &repo,
+                    issue: &issue,
+                    round: &round,
+                    model: &model,
+                    repo_dir: std::path::Path::new("."),
+                    work_dir: &work_dir,
+                },
+                &plan_file,
+                &findings_file,
+                &var("CHECK"),
+                &var("TEST"),
+                &env,
+                &github_output,
+            )
+        }
+        Command::Executor(Executor::Check {
+            repo,
+            issue,
+            round,
+            model,
+            plan_file,
+            results_file,
+            base,
+            work_dir,
+            github_output,
+        }) => {
+            let env: Vec<(String, String)> = std::env::vars().collect();
+            calls::check(
+                &Agent::from_env(),
+                &calls::Round {
+                    repo: &repo,
+                    issue: &issue,
+                    round: &round,
+                    model: &model,
+                    repo_dir: std::path::Path::new("."),
+                    work_dir: &work_dir,
+                },
+                &plan_file,
+                &results_file,
+                &base,
+                &env,
+                &github_output,
+            )
+        }
         Command::Executor(Executor::Red {
             base,
             round,

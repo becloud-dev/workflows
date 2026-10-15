@@ -9,7 +9,7 @@ pub mod rules;
 
 pub use input::{Input, Issue, RANKED_LIMIT, Ref, Relations, build, fetch, tier};
 
-use crate::agent::{Agent, Request};
+use crate::agent::{Agent, Request, Scope};
 use crate::github::Gh;
 use crate::record::RunRecord;
 use anyhow::{Context, Result};
@@ -101,6 +101,7 @@ pub fn run(
                 prompt: ORDER_PROMPT,
                 schema: &order_schema(),
                 files: &files,
+                scope: Scope::READ_ONLY,
             },
             &|o| rules::order_rules(&input, o),
         )?;
@@ -131,6 +132,7 @@ pub fn run(
                 prompt: DUPLICATES_PROMPT,
                 schema: &duplicates_schema(),
                 files: &files,
+                scope: Scope::READ_ONLY,
             },
             &|o| rules::duplicate_rules(&input, o),
         )?;

@@ -26,13 +26,39 @@ pub struct Agent {
     pub parent_env: Vec<(String, String)>,
 }
 
-/// One agent call: a role, its prompt, its output schema and the files it may read.
+/// One agent call: a role, its prompt, its output schema, the files it may read and where it runs.
 pub struct Request<'a> {
     pub role: &'a str,
     pub model: &'a str,
     pub prompt: &'a str,
     pub schema: &'a Value,
+    /// Input files, written to a fresh working directory; only for a call without `scope.cwd`.
     pub files: &'a [(&'a str, Vec<u8>)],
+    pub scope: Scope<'a>,
+}
+
+/// What a call may use and where it runs. `--restricted` confines the file tools to the working
+/// directory and `add_dirs`, and leaves writes to settings, git and tool-configuration files to a
+/// person, which `dontAsk` refuses.
+pub struct Scope<'a> {
+    /// The built-in tools the call has (`--tools`).
+    pub tools: &'a [&'a str],
+    /// The permission rules it may use without asking (`--allowedTools`).
+    pub allow: &'a [&'a str],
+    /// The working directory; `None` is a fresh directory holding only the input files.
+    pub cwd: Option<&'a Path>,
+    /// Further directories the file tools may reach (`--add-dir`).
+    pub add_dirs: &'a [&'a Path],
+}
+
+impl Scope<'static> {
+    /// A judging call: `Read` only, in a fresh directory holding only its input files.
+    pub const READ_ONLY: Scope<'static> = Scope {
+        tools: &["Read"],
+        allow: &["Read"],
+        cwd: None,
+        add_dirs: &[],
+    };
 }
 
 /// What one run of `claude` did; the run record keeps every attempt.
@@ -77,7 +103,14 @@ impl Agent {
         let validator = jsonschema::validator_for(req.schema)
             .map_err(|e| anyhow::anyhow!("the {} schema is not valid: {e}", req.role))?;
         let schema = serde_json::to_string(req.schema)?;
+        if req.scope.cwd.is_some() && !req.files.is_empty() {
+            anyhow::bail!(
+                "the {} call runs in a given directory; its inputs go in an added directory",
+                req.role
+            );
+        }
         let dir = WorkDir::new(req.files)?;
+        let cwd = req.scope.cwd.unwrap_or(dir.path());
         let mut attempts = Vec::new();
         let mut reasons: Vec<String> = Vec::new();
         for n in 1..=ATTEMPTS {
@@ -87,8 +120,8 @@ impl Agent {
                 retry_prompt(req.prompt, &reasons)
             };
             let out = Command::new(&self.program)
-                .args(args(req.model, &prompt, &schema))
-                .current_dir(dir.path())
+                .args(args(req.model, &prompt, &schema, &req.scope))
+                .current_dir(cwd)
                 .env_clear()
                 .envs(self.passed_env())
                 .env("DISABLE_AUTOUPDATER", "1")
@@ -171,31 +204,41 @@ impl Agent {
     }
 }
 
-/// The arguments of every agent call; the prompt and schema are the call's own.
-pub fn args(model: &str, prompt: &str, schema: &str) -> Vec<String> {
-    [
+/// The arguments of every agent call; the prompt, schema and scope are the call's own.
+pub fn args(model: &str, prompt: &str, schema: &str, scope: &Scope) -> Vec<String> {
+    let mut a: Vec<String> = [
         "-p",
         prompt,
         "--model",
         model,
         "--restricted",
         "--tools",
-        "Read",
+        &scope.tools.join(","),
         "--allowedTools",
-        "Read",
-        "--permission-mode",
-        "dontAsk",
-        "--strict-mcp-config",
-        "--settings",
-        SETTINGS,
-        "--json-schema",
-        schema,
-        "--output-format",
-        "json",
-        "--no-session-persistence",
+        &scope.allow.join(","),
     ]
     .map(String::from)
-    .to_vec()
+    .to_vec();
+    for d in scope.add_dirs {
+        a.push("--add-dir".into());
+        a.push(d.to_string_lossy().into_owned());
+    }
+    a.extend(
+        [
+            "--permission-mode",
+            "dontAsk",
+            "--strict-mcp-config",
+            "--settings",
+            SETTINGS,
+            "--json-schema",
+            schema,
+            "--output-format",
+            "json",
+            "--no-session-persistence",
+        ]
+        .map(String::from),
+    );
+    a
 }
 
 fn retry_prompt(prompt: &str, reasons: &[String]) -> String {
@@ -309,8 +352,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn every_call_is_restricted_to_read_with_its_own_settings() {
-        let a = args("m", "the prompt", "{}");
+    fn a_judging_call_is_restricted_to_read_with_its_own_settings() {
+        let a = args("m", "the prompt", "{}", &Scope::READ_ONLY);
         let joined = a.join(" ");
         for flag in [
             "--restricted",
@@ -328,6 +371,26 @@ mod tests {
         assert_eq!(a[settings + 1], SETTINGS);
         assert!(!joined.contains("--setting-sources"));
         assert!(!joined.contains("--bare"));
+        assert!(!joined.contains("--add-dir"));
+    }
+
+    #[test]
+    fn a_wider_scope_names_its_tools_rules_and_added_directories() {
+        let inputs = Path::new("/tmp/inputs");
+        let scope = Scope {
+            tools: &["Read", "Bash"],
+            allow: &["Read", "Bash(git add:*)"],
+            cwd: Some(Path::new("/repo")),
+            add_dirs: &[inputs],
+        };
+        let a = args("m", "p", "{}", &scope);
+        let at = |flag: &str| a.iter().position(|x| x == flag).unwrap();
+        assert_eq!(a[at("--tools") + 1], "Read,Bash");
+        assert_eq!(a[at("--allowedTools") + 1], "Read,Bash(git add:*)");
+        assert_eq!(a[at("--add-dir") + 1], "/tmp/inputs");
+        // still restricted, never asking, never bypassing
+        assert!(a.contains(&"--restricted".to_string()));
+        assert_eq!(a[at("--permission-mode") + 1], "dontAsk");
     }
 
     #[test]
