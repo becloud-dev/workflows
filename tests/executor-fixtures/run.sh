@@ -14,11 +14,22 @@
 . "$(dirname "$0")/../lib.sh"
 cd "$(dirname "$0")"
 
-# v0's publish-scope step, extracted from the released workflow so the regression is tested as it shipped.
-V0=$WORK/v0-dev-execute.yml
-git -C "$ROOT" show v0:.github/workflows/dev-execute.yml > "$V0" \
-  || { echo "cannot read v0:.github/workflows/dev-execute.yml" >&2; exit 1; }
-extract_step "$V0" dev-publish "Check the bundle against the plan" "$WORK/v0-check.sh"
+# v0's publish-scope step, vendored verbatim beside this suite (v0-publish-check.sh): the CI checkout
+# has no tags, so the released step is tested from a committed copy, not `git show v0:`.
+VENDORED=$PWD/v0-publish-check.sh  # this suite's directory: the script cd'd into it above
+cp "$VENDORED" "$WORK/v0-check.sh"
+
+# When the v0 tag is present (any checkout with tags), the vendored copy must still match the shipped
+# step, so the snapshot cannot drift unnoticed; skipped where the tag is absent (the CI checkout).
+if git -C "$ROOT" rev-parse -q --verify v0 >/dev/null 2>&1; then
+  git -C "$ROOT" show v0:.github/workflows/dev-execute.yml > "$WORK/v0.yml"
+  extract_step "$WORK/v0.yml" dev-publish "Check the bundle against the plan" "$WORK/v0-live.sh"
+  # compare against the vendored copy with its provenance header (through the marker) stripped
+  sed '1,/^#@@ v0 verbatim below @@$/d' "$VENDORED" | diff - "$WORK/v0-live.sh" > /dev/null \
+    && ok || bad "v0-publish-check.sh has drifted from the v0 tag; refresh it from git show v0:..."
+else
+  echo "# skip: the v0 tag is not in this checkout; the vendored copy is used as is"
+fi
 
 # A production-shaped bundle: a shallow-free bare git dir holding the approved base and, at
 # refs/push/head, one commit that adds an unapproved workflow .github/workflows/evil.yml.
