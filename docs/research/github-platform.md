@@ -695,3 +695,40 @@ sandbox. PR #33 stays open and unmerged; the three test commits stay in the sand
 For plan 4: the caller template carries `release-please-config.json` with `changelog-sections`,
 `.release-please-manifest.json` (seed version equal to the seed tag) and `release-please.yml`
 without the `release-type` input.
+
+### Local actions and secrets before review (#53), read 2026-10-16
+
+Source: raw `github/docs` `main`: `data/reusables/actions/forked-secrets.md`;
+`content/actions/reference/workflows-and-actions/events-that-trigger-workflows.md` (`pull_request`
+and `workflow_dispatch` tables); `content/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow.md`;
+`content/actions/reference/workflows-and-actions/contexts.md` (`secrets` context);
+`src/rest/data/fpt-2026-03-10/repos.json` ("Create or update file contents"). This repository at
+`713eaa9`: the `on:`, `uses:` and `secrets.` lines of every workflow,
+`templates/consumer/.github/workflows/pr-checks.yml`, `cli/src/executor/scope.rs` and `publish.rs`.
+
+| Topic | Finding |
+|---|---|
+| Fork rule | "With the exception of `GITHUB_TOKEN`, secrets are not passed to the runner when a workflow is triggered from a forked repository"; the executor's branch is in the same repository |
+| App push | an App installation token "instead of `GITHUB_TOKEN`" triggers events, and `pull_request` workflows then run without the approval prompt |
+| `pull_request` commit | `GITHUB_SHA` is the "Last merge commit on the `GITHUB_REF` branch"; with the `$/` row above, a `$/` action in a `pull_request` run resolves to the pull request's version |
+| Composite and secrets | "The `secrets` context is not available for composite actions due to security reasons. If you want to pass a secret to a composite action, you need to do it explicitly as an input." |
+| `workflow_dispatch` | runs at the "Last commit on the `GITHUB_REF` branch or tag", dispatchable "against any branch or tag via the API or GitHub CLI" |
+| Workflow scope | contents API: "The workflow scope is also required in order to modify files in the .github/workflows directory" (OAuth and classic tokens); nothing on `.github/actions` |
+| This repository | `pull_request` runs `ci.yml` and `local-release-gate.yml` (calling `release-gate.yml`); neither references a secret or uses a composite of `.github/actions`. The reusable workflows reach their composites with `$/`, so an edit to `.github/actions` in the rounds' checkout is not what a later round runs |
+| Consumer template | `pr-checks.yml` runs the check and test commands with `contents: read`, no secret and no local action |
+| Scope guard | `scope::changes` diffs `.github/workflows` only, with `--no-renames` (a rename is a deletion and an addition); `publish-check` reuses it |
+
+Interpretation (inference): a change the executor makes under `.github/actions` runs before review
+whenever a `pull_request` workflow of the same repository uses that action. The App's push starts
+the run, the run resolves the action at the pull request's merge commit, and the action gets every
+secret its caller passes as an input or environment variable. A workflow file can name any
+repository secret; an action gets only what its callers pass, so the exposure is narrower, not nil.
+On `workflows` no such caller exists today; a consumer's own workflows are not visible to the CLI,
+so the guard covers `.github/actions`. A dispatch on the executor's branch runs all of the branch's
+code, `cli/` included; it is a deliberate act of a user with write access and not specific to
+`.github/actions`, so it stays outside the guard. The App `workflows` permission is taken to cover
+`.github/workflows` only, as the classic `workflow` scope does; the App permission data lists
+endpoints, not paths.
+
+Unverified: a live `pull_request` run resolving `$/` to a pull request's changed action; the path
+coverage of the App `workflows` permission.
