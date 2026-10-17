@@ -1,6 +1,6 @@
 //! The scope check of a round: every deleted path, and every added, modified or renamed-to path
-//! under `.github/workflows`, must be named in the plan's **Files** list. A path outside the list,
-//! or a diff or plan that cannot be read, fails the round whatever the check model says.
+//! under a [`GUARDED`] directory, must be named in the plan's **Files** list. A path outside the
+//! list, or a diff or plan that cannot be read, fails the round whatever the check model says.
 
 use super::plan;
 use anyhow::{Context, Result};
@@ -9,9 +9,23 @@ use std::io::Write;
 use std::path::Path;
 use std::process::Command;
 
+/// The directories whose added or modified files must be named in the plan: the workflows, and the
+/// local actions, which a `pull_request` run resolves at the pull request's commit with the secrets
+/// its caller passes (#53).
+pub const GUARDED: [&str; 2] = [".github/workflows", ".github/actions"];
+
+/// The [`GUARDED`] directory `path` lies under; `.github/workflows` for any other path.
+pub fn guarded_dir(path: &str) -> &'static str {
+    GUARDED
+        .iter()
+        .find(|d| path.strip_prefix(**d).is_some_and(|r| r.starts_with('/')))
+        .copied()
+        .unwrap_or(GUARDED[0])
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum State {
-    /// Nothing was deleted and no workflow changed.
+    /// Nothing was deleted and no guarded file changed.
     None,
     Ok,
     OutOfScope,
@@ -114,15 +128,14 @@ fn diff_names(repo: &Repo, args: &[&str]) -> Option<Vec<String>> {
     )
 }
 
-/// The deleted paths, and the added or modified paths under `.github/workflows`, between `base`
-/// and `tip` (a merge-base diff, as for a pull request); `None` when either diff cannot be read.
+/// The deleted paths, and the added or modified paths under the [`GUARDED`] directories, between
+/// `base` and `tip` (a merge-base diff, as for a pull request); `None` when either diff cannot be read.
 pub fn changes(repo: &Repo, base: &str, tip: &str) -> Option<(Vec<String>, Vec<String>)> {
     let range = format!("{base}...{tip}");
     let deleted = diff_names(repo, &["--diff-filter=D", &range])?;
-    let changed = diff_names(
-        repo,
-        &["--diff-filter=AM", &range, "--", ".github/workflows"],
-    )?;
+    let mut args = vec!["--diff-filter=AM", range.as_str(), "--"];
+    args.extend(GUARDED);
+    let changed = diff_names(repo, &args)?;
     Some((deleted, changed))
 }
 
@@ -132,7 +145,7 @@ pub fn render(report: &Report) -> String {
     match report.state {
         State::Error => {
             s.push_str(
-                "the deletions, the workflow changes or the plan Files list could not be read\n",
+                "the deletions, the workflow and action changes or the plan Files list could not be read\n",
             );
         }
         State::OutOfScope => {
@@ -151,7 +164,7 @@ pub fn render(report: &Report) -> String {
                 ),
                 (
                     Kind::Changed,
-                    "changed under .github/workflows but not named in the plan Files list:",
+                    "changed under .github/workflows or .github/actions but not named in the plan Files list:",
                 ),
                 (
                     Kind::Test,
@@ -286,6 +299,16 @@ mod tests {
     }
 
     #[test]
+    fn a_path_is_under_the_guarded_directory_it_starts_with() {
+        assert_eq!(
+            guarded_dir(".github/actions/x/action.yml"),
+            ".github/actions"
+        );
+        assert_eq!(guarded_dir(".github/workflows/ci.yml"), ".github/workflows");
+        assert_eq!(guarded_dir(".github/actionsx/a"), ".github/workflows");
+    }
+
+    #[test]
     fn an_unreadable_plan_is_an_error_not_a_pass() {
         assert_eq!(check(None, &list(&["x"]), &[], &[]).state, State::Error);
     }
@@ -302,7 +325,7 @@ mod tests {
         assert!(text.contains("state: out_of_scope\n"));
         assert!(text.contains("deleted but not named in the plan Files list:\n- a\n"));
         assert!(text.contains(
-            "changed under .github/workflows but not named in the plan Files list:\n- .github/workflows/b.yml\n"
+            "changed under .github/workflows or .github/actions but not named in the plan Files list:\n- .github/workflows/b.yml\n"
         ));
     }
 }

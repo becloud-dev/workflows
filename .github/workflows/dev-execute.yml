@@ -289,7 +289,7 @@ jobs:
   # A separate runner and environment: no step here runs round, model, setup, check or test code, so
   # nothing the rounds wrote into GITHUB_ENV, GITHUB_PATH or BASH_ENV reaches the token. It takes only the bundle and the outputs.
   # Publish re-checks the plan scope itself: it reads the approved plan's Files list from the plan comment and refuses
-  # a bundle that changes a workflow or deletes a file the plan does not name, before the executor token is minted.
+  # a bundle that changes a workflow or a local action, or deletes a file, the plan does not name, before the executor token is minted.
   dev-publish:
     name: Development publication
     needs: [dev-gate, dev-execute]
