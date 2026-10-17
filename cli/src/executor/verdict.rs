@@ -121,10 +121,13 @@ pub fn decide(i: &Inputs) -> Verdict {
         let kinds: Vec<Value> = serde_json::from_str(or(&i.scope_kinds, "[]")).unwrap_or_default();
         for (n, p) in paths.iter().enumerate() {
             match kinds.get(n).and_then(Value::as_str) {
-                Some("changed") => f.push_str(&format!(
-                    "- change of {} under .github/workflows is not in the plan Files list\n",
-                    interp(p)
-                )),
+                Some("changed") => {
+                    let p = interp(p);
+                    f.push_str(&format!(
+                        "- change of {p} under {} is not in the plan Files list\n",
+                        super::scope::guarded_dir(&p)
+                    ))
+                }
                 Some("test") => f.push_str(&format!(
                     "- the implementer changed the test file {}, which only the test-writer may\n",
                     interp(p)
@@ -138,7 +141,7 @@ pub fn decide(i: &Inputs) -> Verdict {
     }
     if scope == "error" {
         f.push_str(
-            "- the deletions, the workflow changes or the plan Files list could not be read\n",
+            "- the deletions, the workflow and action changes or the plan Files list could not be read\n",
         );
     }
     Verdict {
@@ -263,6 +266,17 @@ mod tests {
                 "- change of b.yml under .github/workflows is not in the plan Files list\n"
             )
         );
+    }
+
+    #[test]
+    fn a_local_action_violation_names_its_directory() {
+        let mut i = base();
+        i.scope_state = "out_of_scope".into();
+        i.scope_violations = r#"[".github/actions/x/action.yml"]"#.into();
+        i.scope_kinds = r#"["changed"]"#.into();
+        assert!(decide(&i).findings.contains(
+            "- change of .github/actions/x/action.yml under .github/actions is not in the plan Files list\n"
+        ));
     }
 
     #[test]

@@ -153,3 +153,31 @@ fn a_forged_plan_naming_an_unapproved_workflow_is_refused() {
             .contains("::error::the plan comment was changed after it was approved")
     );
 }
+
+#[test]
+fn a_local_action_the_plan_does_not_name_is_refused_with_its_path() {
+    // a local action runs in the pull request's checks with the secrets its caller passes (#53)
+    let (dir, base) = bundle_adding(".github/actions/x/action.yml");
+    let out = run(dir.path(), &base, PLAN, &sha256_hex(PLAN));
+    assert!(!out.status.success());
+    assert!(String::from_utf8_lossy(&out.stdout).contains(
+        "::error::changed under .github/actions but not named in the plan Files list: .github/actions/x/action.yml"
+    ));
+}
+
+#[test]
+fn a_named_local_action_is_published_without_the_workflows_permission() {
+    let plan = format!("{PLAN}- `.github/actions/x/action.yml`\n");
+    let (dir, base) = bundle_adding(".github/actions/x/action.yml");
+    let out = run(dir.path(), &base, &plan, &sha256_hex(&plan));
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+    // the permission covers `.github/workflows` only; a local action needs contents write alone
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("github-output")).unwrap(),
+        "workflows=false\n"
+    );
+}

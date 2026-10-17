@@ -134,7 +134,7 @@ runs:
         run_one test "$TEST"
         echo "results_file=$out" >> "$GITHUB_OUTPUT"
 
-    # every deleted path, every added, modified or renamed-to path under .github/workflows not named
+    # every deleted path, every added, modified or renamed-to path under .github/workflows or .github/actions not named
     # in the plan's Files list, and every test file the implementer changed (between the boundary and
     # HEAD, matching TEST_PATHS), makes the verdict step fail the round
     - id: scope

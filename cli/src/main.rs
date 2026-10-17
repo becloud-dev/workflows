@@ -59,7 +59,7 @@ enum Executor {
         #[arg(long)]
         github_output: PathBuf,
     },
-    /// Check the round's deletions and workflow changes against the plan's Files list, and refuse a
+    /// Check the round's deletions and workflow and action changes against the plan's Files list, and refuse a
     /// test file the implementer changed. `TEST_BOUNDARY` (the commit after the test-writer) and
     /// `TEST_PATHS` are read from the environment.
     Scope {

@@ -119,6 +119,14 @@ Two cases only, built with the CLI executor increment.
   token-holding steps on `v0`. The fixture pins that isolation (publish needs the no-code gate,
   runs no round or command, and trusts only the gate's pins) so a later change cannot regress it.
 
+### The scope check covers `.github/actions` (#53)
+A file added or modified under `.github/actions` must be named in the plan's **Files** list, the
+literal match `.github/workflows` has; the round's scope step and `publish-check` both judge it. Why:
+the executor App's push starts the pull request's `pull_request` runs, which resolve a local action
+at the pull request's commit with the secrets its caller passes, before any review
+(`docs/research/github-platform.md`, "Local actions and secrets before review"). The `workflows`
+permission request still follows `.github/workflows` only. Replaces: the workflows directory alone.
+
 ### `triage-sandbox` is archived
 Changes are tested on `workflows`. The repository's open release PR and test issues are frozen
 with it.

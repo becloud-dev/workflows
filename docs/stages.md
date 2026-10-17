@@ -82,7 +82,7 @@ during the bundle or the push, or redirect the push, so the token reaches only t
 
 The `scope` step of the `dev-round` action runs `wf executor scope`. It lists the files the executor
 deleted between the base and HEAD, with a rename counted as a deletion of its old path, and the
-files added or modified under `.github/workflows`. A path is allowed only when it is named in the
+files added or modified under `.github/workflows` or `.github/actions`. A path is allowed only when it is named in the
 plan's **Files** list, or lies under a listed path that ends in `/`; the comparison is literal. It
 also lists the test files the implementer changed between the test-writer's commit and HEAD (the
 `TEST_PATHS` globs): only the test-writer may touch the tests, so any such change is a violation

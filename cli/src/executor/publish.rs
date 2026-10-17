@@ -77,7 +77,8 @@ pub fn check(
             }
             scope::Kind::Changed => {
                 format!(
-                    "changed under .github/workflows but not named in the plan Files list: {path}"
+                    "changed under {} but not named in the plan Files list: {path}",
+                    scope::guarded_dir(&path)
                 )
             }
             // publish-check passes no implementer test paths, so this kind never arises here

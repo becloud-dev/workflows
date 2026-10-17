@@ -148,11 +148,30 @@ fn a_workflow_added_or_modified_must_be_named_exactly() {
     assert_eq!(state, "out_of_scope");
     assert_eq!(v, r#"[".github/workflows/new.yml"]"#);
     assert_eq!(k, r#"["changed"]"#);
-    assert!(text.contains("changed under .github/workflows but not named"));
+    assert!(text.contains("changed under .github/workflows or .github/actions but not named"));
     // a glob is literal, a directory with its slash covers the files below it
     let (state, _, _, _) = r.check(&format!("{HEAD}- `.github/workflows/*`\n"));
     assert_eq!(state, "out_of_scope");
     let (state, _, _, _) = r.check(&format!("{HEAD}- `.github/workflows/`\n"));
+    assert_eq!(state, "ok");
+}
+
+#[test]
+fn a_local_action_added_or_modified_must_be_named_exactly() {
+    // a pull_request run resolves a local action at the pull request's commit, with the secrets its
+    // caller passes, so `.github/actions` is guarded as `.github/workflows` is (#53)
+    let r = Repo::new(&[".github/actions/x/action.yml"], |d| {
+        put(d, ".github/actions/x/action.yml");
+        put(d, ".github/actions/y/action.yml");
+        put(d, ".github/actions-notes/z.md");
+    });
+    let (state, v, k, text) = r.check(&format!("{HEAD}- `.github/actions/x/action.yml`\n"));
+    assert_eq!(state, "out_of_scope");
+    // a sibling directory that only shares the prefix is not guarded
+    assert_eq!(v, r#"[".github/actions/y/action.yml"]"#);
+    assert_eq!(k, r#"["changed"]"#);
+    assert!(text.contains("- .github/actions/y/action.yml\n"));
+    let (state, _, _, _) = r.check(&format!("{HEAD}- `.github/actions/`\n"));
     assert_eq!(state, "ok");
 }
 
@@ -168,11 +187,9 @@ fn a_plan_without_a_files_heading_or_a_bad_base_is_an_error() {
     let r = Repo::new(&["src/a.rs"], |d| rm(d, "src/a.rs"));
     let (state, _, _, text) = r.check("**Objective.** x\n- `src/a.rs`\n");
     assert_eq!(state, "error");
-    assert!(
-        text.contains(
-            "the deletions, the workflow changes or the plan Files list could not be read"
-        )
-    );
+    assert!(text.contains(
+        "the deletions, the workflow and action changes or the plan Files list could not be read"
+    ));
     let plan = r.dir.path().join(".plan-bad-base.md");
     std::fs::write(&plan, format!("{HEAD}- `src/a.rs`\n")).unwrap();
     let (state, _, _, _) = r.run_with(&plan, "0000000000000000000000000000000000000000");
