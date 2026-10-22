@@ -39,6 +39,9 @@ Rules:
 - Never weaken or delete a test to make it pass.
 - Read files with the `Read` tool, never with `cat`. Run each command on its own, exactly as
   given, with no `;`, `&&`, pipe or `cd`; the exit status is in the tool result.
+- A denied command means its form broke the rule above (a chain, `git -C`, a path, a command
+  not listed); the other commands stay available. Fix the form and run it again on its own; a
+  denial is never a reason to report `blocked`.
 - If a step cannot be done as written (a file or tool the plan assumes does not exist, a
   criterion that cannot be tested here), stop and report it as `blocked`; do not guess.
 - When the plan's changes are already committed on the branch (an earlier round made them) and
