@@ -337,11 +337,18 @@ mod tests {
             .lines()
             .skip_while(|l| !l.contains("A denied command"))
             .take_while(|l| !l.trim().is_empty() && !l.starts_with("- If a step"))
+            .flat_map(str::split_whitespace)
             .collect::<Vec<_>>()
             .join(" ");
         assert!(rule.contains("run it again on its own"), "{rule:?}");
         assert!(
-            rule.contains("never a reason to report `blocked`"),
+            rule.contains("is not a reason to report `blocked`"),
+            "{rule:?}"
+        );
+        // a command the list does not hold has no other form, so it stays a blocked case (#102 review)
+        assert!(!rule.contains("a command not listed"), "{rule:?}");
+        assert!(
+            rule.contains("A command that is not listed stays a `blocked` case"),
             "{rule:?}"
         );
     }
