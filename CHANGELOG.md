@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.1](https://github.com/becloud-dev/workflows/compare/v0.4.0...v0.4.1) (2026-10-22)
+
+
+### Bug Fixes
+
+* **dev-execute:** give the executor's commits a defined git identity ([#97](https://github.com/becloud-dev/workflows/issues/97)) ([4bacfce](https://github.com/becloud-dev/workflows/commit/4bacfceae9288ae1ad473336646ac6ac19ff47e6))
+
 ## [0.4.0](https://github.com/becloud-dev/workflows/compare/v0.3.0...v0.4.0) (2026-10-15)
 
 
