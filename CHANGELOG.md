@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.2](https://github.com/becloud-dev/workflows/compare/v0.4.1...v0.4.2) (2026-10-22)
+
+
+### Bug Fixes
+
+* **dev-execute:** keep an unlisted command a blocked case in the denial rule ([#103](https://github.com/becloud-dev/workflows/issues/103)) ([0b2c98e](https://github.com/becloud-dev/workflows/commit/0b2c98ef4c50783fe03864319e25efb7d43b162a))
+* **dev-execute:** tell the executor a denied command is no reason to stop ([#101](https://github.com/becloud-dev/workflows/issues/101)) ([db881c2](https://github.com/becloud-dev/workflows/commit/db881c27f3c07740f42b5bce192d62989a15116e))
+
 ## [0.4.1](https://github.com/becloud-dev/workflows/compare/v0.4.0...v0.4.1) (2026-10-22)
 
 
