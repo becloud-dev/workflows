@@ -331,6 +331,22 @@ mod tests {
     }
 
     #[test]
+    fn the_execute_prompt_says_a_denied_command_is_no_reason_to_stop() {
+        // a run on aif-c01-study #1 (39845118368) stopped as blocked after one denied `git -C ... &&`
+        let rule = EXECUTE_PROMPT
+            .lines()
+            .skip_while(|l| !l.contains("A denied command"))
+            .take_while(|l| !l.trim().is_empty() && !l.starts_with("- If a step"))
+            .collect::<Vec<_>>()
+            .join(" ");
+        assert!(rule.contains("run it again on its own"), "{rule:?}");
+        assert!(
+            rule.contains("never a reason to report `blocked`"),
+            "{rule:?}"
+        );
+    }
+
+    #[test]
     fn a_check_verdict_and_its_findings_must_agree() {
         assert!(check_rules(&json!({"verdict": "pass", "findings": []})).is_empty());
         assert!(
