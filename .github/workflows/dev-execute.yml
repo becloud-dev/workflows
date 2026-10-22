@@ -156,6 +156,14 @@ jobs:
           BRANCH: ${{ needs.dev-gate.outputs.branch }}
         run: git switch -c "$BRANCH"
 
+      # the agent commits with an environment cleared down to PASSED_ENV and the runner image sets no
+      # identity, so the checkout's own config gives the commits one (#96)
+      - name: Set the commit identity
+        id: identity
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
       - name: Set up
         if: inputs.setup_command != ''
         env:

@@ -105,6 +105,18 @@ newcase; mkrepo; prun 0
 newcase; mkrepo; prun 1
 [ "$PRC" != 0 ] && [ -z "$(out plan_file)" ] && ok "rounds: a plan changed after the approval fails the job before any round" || bad "rounds: changed plan not stopped"
 
+echo "# rounds: the executor's commits carry the identity the workflow sets (#96)"
+# the agent commits with plain git and an environment cleared down to PASSED_ENV (cli/src/agent.rs);
+# the runner image sets no identity, so here HOME is empty and no system config is read either
+BOT='github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>'
+newcase; mkrepo; mkdir -p "$C/home"
+( cd "$W/repo" && bash "$W/identity.sh" ) > "$C/stdout" 2>&1
+( cd "$W/repo" && echo y > g && git add g \
+  && env -i PATH="$PATH" HOME="$C/home" TMPDIR="$RUNNER_TEMP" LANG=C GIT_CONFIG_NOSYSTEM=1 git commit -q -m "feat: y" ) >> "$C/stdout" 2>&1
+[ "$(git -C "$W/repo" log -1 --format='%an <%ae>|%cn <%ce>')" = "$BOT|$BOT" ] \
+  && ok "rounds: a commit made with the agent's environment has the bot as author and committer" \
+  || bad "rounds: commit identity $(git -C "$W/repo" log -1 --format='%an <%ae>|%cn <%ce>') $(cat "$C/stdout")"
+
 echo "# decide: the step runs wf"
 # the decision cases (pass, draft, round 2, blocked, failed, none, no commits) and the bundle itself
 # (from a fresh git dir, no hook of a planted global config) are cli/src/executor/decide.rs and
